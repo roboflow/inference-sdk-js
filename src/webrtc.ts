@@ -2,6 +2,82 @@
 import { InferenceHTTPClient, Connector, WebRTCParams } from "./inference-api";
 import { stopStream } from "./streams";
 
+/**
+ * Binary protocol header size (frame_id + chunk_index + total_chunks)
+ * Each field is 4 bytes uint32 little-endian
+ */
+const HEADER_SIZE = 12;
+
+/**
+ * Reassembles chunked binary messages from the datachannel
+ */
+export class ChunkReassembler {
+  private pendingFrames: Map<number, {
+    chunks: Map<number, Uint8Array>;
+    totalChunks: number;
+  }> = new Map();
+
+  /**
+   * Process an incoming chunk and return the complete message if all chunks received
+   */
+  processChunk(frameId: number, chunkIndex: number, totalChunks: number, payload: Uint8Array): Uint8Array | null {
+    // Single chunk message - return immediately
+    if (totalChunks === 1) {
+      return payload;
+    }
+
+    // Multi-chunk message - accumulate
+    if (!this.pendingFrames.has(frameId)) {
+      this.pendingFrames.set(frameId, {
+        chunks: new Map(),
+        totalChunks
+      });
+    }
+
+    const frame = this.pendingFrames.get(frameId)!;
+    frame.chunks.set(chunkIndex, payload);
+
+    // Check if all chunks received
+    if (frame.chunks.size === totalChunks) {
+      // Reassemble in order
+      const totalLength = Array.from(frame.chunks.values()).reduce((sum, chunk) => sum + chunk.length, 0);
+      const result = new Uint8Array(totalLength);
+      let offset = 0;
+
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = frame.chunks.get(i)!;
+        result.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      this.pendingFrames.delete(frameId);
+      return result;
+    }
+
+    return null;
+  }
+
+  /**
+   * Clear all pending frames (for cleanup)
+   */
+  clear(): void {
+    this.pendingFrames.clear();
+  }
+}
+
+/**
+ * Parse the binary header from a datachannel message
+ */
+export function parseBinaryHeader(buffer: ArrayBuffer): { frameId: number; chunkIndex: number; totalChunks: number; payload: Uint8Array } {
+  const view = new DataView(buffer);
+  const frameId = view.getUint32(0, true);      // little-endian
+  const chunkIndex = view.getUint32(4, true);   // little-endian
+  const totalChunks = view.getUint32(8, true);  // little-endian
+  const payload = new Uint8Array(buffer, HEADER_SIZE);
+
+  return { frameId, chunkIndex, totalChunks, payload };
+}
+
 export interface UseStreamOptions {
   disableInputStreamDownscaling?: boolean;
 }
@@ -148,6 +224,7 @@ export class RFWebRTCConnection {
   private pipelineId: string | null;
   private apiKey: string | null;
   private dataChannel: RTCDataChannel;
+  private reassembler: ChunkReassembler;
 
   /** @private */
   constructor(
@@ -165,6 +242,10 @@ export class RFWebRTCConnection {
     this.pipelineId = pipelineId;
     this.apiKey = apiKey;
     this.dataChannel = dataChannel;
+    this.reassembler = new ChunkReassembler();
+
+    // Set binary mode for datachannel
+    this.dataChannel.binaryType = "arraybuffer";
 
     // Setup data channel event listeners
     if (onData) {
@@ -174,11 +255,25 @@ export class RFWebRTCConnection {
 
       this.dataChannel.addEventListener("message", (messageEvent: MessageEvent) => {
         try {
-          const data = JSON.parse(messageEvent.data);
-          onData(data);
+          // Handle binary protocol with chunking
+          if (messageEvent.data instanceof ArrayBuffer) {
+            const { frameId, chunkIndex, totalChunks, payload } = parseBinaryHeader(messageEvent.data);
+            const completePayload = this.reassembler.processChunk(frameId, chunkIndex, totalChunks, payload);
+
+            if (completePayload) {
+              // Decode UTF-8 JSON payload
+              const decoder = new TextDecoder("utf-8");
+              const jsonString = decoder.decode(completePayload);
+              const data = JSON.parse(jsonString);
+              onData(data);
+            }
+          } else {
+            // Fallback for string messages (shouldn't happen with new protocol)
+            const data = JSON.parse(messageEvent.data);
+            onData(data);
+          }
         } catch (err) {
           console.error("[RFWebRTC] Failed to parse data channel message:", err);
-          onData(messageEvent.data);
         }
       });
 
@@ -188,6 +283,7 @@ export class RFWebRTCConnection {
 
       this.dataChannel.addEventListener("close", () => {
         // console.log("[RFWebRTC] Data channel closed");
+        this.reassembler.clear();
       });
     }
   }
@@ -240,6 +336,9 @@ export class RFWebRTCConnection {
    * ```
    */
   async cleanup(): Promise<void> {
+    // Clear pending chunks
+    this.reassembler.clear();
+
     // Terminate pipeline
     if (this.pipelineId && this.apiKey) {
       const client = InferenceHTTPClient.init({ apiKey: this.apiKey });
