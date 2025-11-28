@@ -1,5 +1,5 @@
 
-import { InferenceHTTPClient, Connector, WebRTCParams } from "./inference-api";
+import { InferenceHTTPClient, Connector, WebRTCParams, RTCIceServerConfig } from "./inference-api";
 import { stopStream } from "./streams";
 
 /**
@@ -141,16 +141,23 @@ function setupRemoteStreamListener(pc: RTCPeerConnection): Promise<MediaStream> 
   });
 }
 
-async function preparePeerConnection(localStream: MediaStream): Promise<{
+const DEFAULT_ICE_SERVERS: RTCIceServerConfig[] = [
+  { urls: ["stun:stun.l.google.com:19302"] }
+];
+
+async function preparePeerConnection(
+  localStream: MediaStream,
+  customIceServers?: RTCIceServerConfig[]
+): Promise<{
   pc: RTCPeerConnection;
   offer: RTCSessionDescriptionInit;
   remoteStreamPromise: Promise<MediaStream>;
   dataChannel: RTCDataChannel;
 }> {
-  const stunServer = "stun:stun.l.google.com:19302";
+  const iceServers = customIceServers ?? DEFAULT_ICE_SERVERS;
 
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: [stunServer] }]
+    iceServers: iceServers as RTCIceServer[]
   });
 
   // Add transceiver for receiving remote video (BEFORE adding tracks - order matters!)
@@ -470,8 +477,11 @@ export async function useStream({
   // Step 1: Use provided media stream
   const localStream = source;
 
-  // Step 2: Prepare peer connection and create offer
-  const { pc, offer, remoteStreamPromise, dataChannel } = await preparePeerConnection(localStream);
+  // Step 2: Prepare peer connection and create offer (with custom ICE servers if provided)
+  const { pc, offer, remoteStreamPromise, dataChannel } = await preparePeerConnection(
+    localStream,
+    wrtcParams.iceServers
+  );
 
   // Step 3: Call connector.connectWrtc to exchange SDP and get answer
   const answer = await connector.connectWrtc(
