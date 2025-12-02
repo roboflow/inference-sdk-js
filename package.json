@@ -1,6 +1,6 @@
 {
   "name": "@roboflow/inference-sdk",
-  "version": "0.1.2",
+  "version": "0.1.5",
   "description": "Lightweight client for Roboflow's hosted inference API with WebRTC streaming support",
   "keywords": [
     "roboflow",
@@ -35,7 +35,7 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/roboflow/inference-sdk.git"
+    "url": "https://github.com/roboflow/inference-sdk-js"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
