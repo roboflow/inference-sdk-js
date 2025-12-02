@@ -22,7 +22,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     # Only allow publishing from master branch
-    if: github.ref == 'refs/heads/master'
+    # TODO: Remove publish-actin before merging
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/publish-actin'
     permissions:
       contents: write
     steps:
@@ -62,6 +63,16 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Dry run summary
         if: ${{ inputs.dry_run == true }}
