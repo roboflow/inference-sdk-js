@@ -65,6 +65,7 @@ jobs:
 
       - name: Publish to npm
         if: ${{ inputs.dry_run == false }}
+        # auth works by adding github.com/roboflow/inference-sdk-js as a trusted publisher in https://www.npmjs.com/package/@roboflow/inference-sdk
         run: npm publish --access public
 
       - name: Create GitHub Release
