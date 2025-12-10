@@ -477,16 +477,37 @@ export async function useStream({
   // Step 1: Use provided media stream
   const localStream = source;
 
-  // Step 2: Prepare peer connection and create offer (with custom ICE servers if provided)
+  // Step 2: Determine ICE servers to use
+  // Priority: 1) User-provided in wrtcParams, 2) From connector.getIceServers(), 3) Defaults
+  let iceServers = wrtcParams.iceServers;
+  if ((!iceServers || iceServers.length === 0) && connector.getIceServers) {
+    try {
+      const turnConfig = await connector.getIceServers();
+      if (turnConfig && turnConfig.length > 0) {
+        iceServers = turnConfig;
+        console.log("[RFWebRTC] Using TURN servers from connector");
+      }
+    } catch (err) {
+      console.warn("[RFWebRTC] Failed to fetch TURN config, using defaults:", err);
+    }
+  }
+
+  // Step 3: Prepare peer connection and create offer (with resolved ICE servers)
   const { pc, offer, remoteStreamPromise, dataChannel } = await preparePeerConnection(
     localStream,
-    wrtcParams.iceServers
+    iceServers
   );
 
-  // Step 3: Call connector.connectWrtc to exchange SDP and get answer
+  // Update wrtcParams with resolved iceServers so server also uses them
+  const resolvedWrtcParams = {
+    ...wrtcParams,
+    iceServers: iceServers
+  };
+
+  // Step 4: Call connector.connectWrtc to exchange SDP and get answer
   const answer = await connector.connectWrtc(
     { sdp: offer.sdp!, type: offer.type! },
-    wrtcParams
+    resolvedWrtcParams
   );
 
   // API returns sdp and type at root level
@@ -499,10 +520,10 @@ export async function useStream({
 
   const pipelineId = answer?.context?.pipeline_id || null;
 
-  // Step 4: Set remote description
+  // Step 5: Set remote description
   await pc.setRemoteDescription(sdpAnswer);
 
-  // Step 5: Wait for connection to establish
+  // Step 6: Wait for connection to establish
   await new Promise<void>((resolve, reject) => {
     const checkState = () => {
       if (pc.connectionState === "connected") {
@@ -524,7 +545,7 @@ export async function useStream({
     }, 30000);
   });
 
-  // Step 6: Optimize quality (disable downsampling by default)
+  // Step 7: Optimize quality (disable downsampling by default)
   const shouldDisableDownscaling = options.disableInputStreamDownscaling !== false; // Default to true
   if (shouldDisableDownscaling) {
     await disableInputStreamDownscaling(pc);
