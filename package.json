@@ -1,6 +1,6 @@
 {
   "name": "@roboflow/inference-sdk",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Lightweight client for Roboflow's hosted inference API with WebRTC streaming support",
   "keywords": [
     "roboflow",
