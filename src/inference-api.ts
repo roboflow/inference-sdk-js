@@ -1,3 +1,18 @@
+/**
+ * Base URL for the Roboflow API (used for TURN server configuration)
+ * Can be overridden via environment variable in Node.js environments
+ */
+const RF_API_BASE_URL = typeof process !== "undefined" && process.env?.RF_API_BASE_URL
+  ? process.env.RF_API_BASE_URL
+  : "https://api.roboflow.com";
+
+/**
+ * List of known Roboflow serverless API URLs where auto TURN config applies
+ */
+const ROBOFLOW_SERVERLESS_URLS = [
+  "https://serverless.roboflow.com"
+];
+
 export interface WebRTCWorkerConfig {
   imageInputName?: string;
   streamOutputNames?: string[];
@@ -105,6 +120,14 @@ export interface WebRTCParams {
 
 export interface Connector {
   connectWrtc(offer: WebRTCOffer, wrtcParams: WebRTCParams): Promise<WebRTCWorkerResponse>;
+  /**
+   * Fetch ICE servers (TURN configuration) for WebRTC connections
+   * This should be called BEFORE creating the RTCPeerConnection to ensure
+   * proper NAT traversal configuration.
+   *
+   * @returns Promise resolving to ICE server configuration, or null/undefined if not available
+   */
+  getIceServers?(): Promise<RTCIceServerConfig[] | null>;
   _apiKey?: string;
   _serverUrl?: string;
 }
@@ -264,6 +287,78 @@ export class InferenceHTTPClient {
       }
     );
   }
+
+  /**
+   * Fetch TURN server configuration from Roboflow API
+   *
+   * This automatically fetches TURN server credentials for improved WebRTC
+   * connectivity through firewalls and NAT. Only applicable when using
+   * Roboflow serverless infrastructure.
+   *
+   * @returns Promise resolving to ICE server configuration, or null if not applicable
+   *
+   * @example
+   * ```typescript
+   * const client = InferenceHTTPClient.init({ apiKey: "your-api-key" });
+   * const iceServers = await client.fetchTurnConfig();
+   * // Returns: [{ urls: ["turn:..."], username: "...", credential: "..." }]
+   * ```
+   */
+  async fetchTurnConfig(): Promise<RTCIceServerConfig[] | null> {
+    // Only fetch TURN config for Roboflow serverless URLs
+    if (!ROBOFLOW_SERVERLESS_URLS.includes(this.serverUrl)) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(
+        `${RF_API_BASE_URL}/webrtc_turn_config?api_key=${this.apiKey}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+
+      if (!response.ok) {
+        console.warn(`[RFWebRTC] Failed to fetch TURN config (${response.status}), using defaults`);
+        return null;
+      }
+
+      const turnConfig = await response.json();
+
+      // Handle 3 formats:
+      // 1. Single server object: { urls, username, credential }
+      // 2. Array of servers: [{ urls, username, credential }, ...]
+      // 3. Object with iceServers: { iceServers: [...] }
+      let iceServersRaw: any[];
+
+      if (Array.isArray(turnConfig)) {
+        // Format 2: array of servers
+        iceServersRaw = turnConfig;
+      } else if (turnConfig.iceServers && Array.isArray(turnConfig.iceServers)) {
+        // Format 3: object with iceServers array
+        iceServersRaw = turnConfig.iceServers;
+      } else if (turnConfig.urls) {
+        // Format 1: single server object - wrap in array
+        iceServersRaw = [turnConfig];
+      } else {
+        console.warn("[RFWebRTC] Invalid TURN config format, using defaults");
+        return null;
+      }
+
+      // Normalize the ICE servers format
+      const iceServers: RTCIceServerConfig[] = iceServersRaw.map((server: any) => ({
+        urls: Array.isArray(server.urls) ? server.urls : [server.urls],
+        username: server.username,
+        credential: server.credential
+      }));
+
+      return iceServers;
+    } catch (err) {
+      console.warn("[RFWebRTC] Error fetching TURN config:", err);
+      return null;
+    }
+  }
 }
 
 /**
@@ -300,9 +395,10 @@ export const connectors = {
       );
     }
 
+    const client = InferenceHTTPClient.init({ apiKey, serverUrl });
+
     return {
       connectWrtc: async (offer: WebRTCOffer, wrtcParams: WebRTCParams): Promise<WebRTCWorkerResponse> => {
-        const client = InferenceHTTPClient.init({ apiKey, serverUrl });
         console.log("wrtcParams", wrtcParams);
         const answer = await client.initializeWebrtcWorker({
           offer,
@@ -325,6 +421,13 @@ export const connectors = {
         return answer;
       },
 
+      /**
+       * Fetch TURN server configuration for improved WebRTC connectivity
+       */
+      getIceServers: async (): Promise<RTCIceServerConfig[] | null> => {
+        return await client.fetchTurnConfig();
+      },
+
       // Store apiKey for cleanup
       _apiKey: apiKey,
       _serverUrl: serverUrl
@@ -337,24 +440,41 @@ export const connectors = {
    * Your backend receives the offer and wrtcParams, adds the secret API key,
    * and forwards to Roboflow. This keeps your API key secure.
    *
-   * @param proxyUrl - Backend proxy endpoint URL
-   * @param options - Additional options (reserved for future use)
-   * @returns Connector with connectWrtc method
+   * For improved WebRTC connectivity through firewalls, implement a separate
+   * endpoint for TURN server configuration that calls `fetchTurnConfig()`.
+   *
+   * @param proxyUrl - Backend proxy endpoint URL for WebRTC initialization
+   * @param options - Additional options
+   * @param options.turnConfigUrl - Optional URL for fetching TURN server configuration
+   * @returns Connector with connectWrtc and optional getIceServers methods
    *
    * @example
    * ```typescript
-   * const connector = connectors.withProxyUrl('/api/init-webrtc');
-   * const answer = await connector.connectWrtc(offer, wrtcParams);
+   * // Frontend: Create connector with TURN config endpoint
+   * const connector = connectors.withProxyUrl('/api/init-webrtc', {
+   *   turnConfigUrl: '/api/turn-config'
+   * });
    * ```
    *
    * @example
-   * Backend implementation (Express):
+   * Backend implementation (Express) with TURN server support:
    * ```typescript
+   * // Endpoint for TURN configuration (called first by SDK)
+   * app.get('/api/turn-config', async (req, res) => {
+   *   const client = InferenceHTTPClient.init({
+   *     apiKey: process.env.ROBOFLOW_API_KEY
+   *   });
+   *   const iceServers = await client.fetchTurnConfig();
+   *   res.json({ iceServers });
+   * });
+   *
+   * // Endpoint for WebRTC initialization
    * app.post('/api/init-webrtc', async (req, res) => {
    *   const { offer, wrtcParams } = req.body;
    *   const client = InferenceHTTPClient.init({
    *     apiKey: process.env.ROBOFLOW_API_KEY
    *   });
+   *
    *   const answer = await client.initializeWebrtcWorker({
    *     offer,
    *     workflowSpec: wrtcParams.workflowSpec,
@@ -372,11 +492,14 @@ export const connectors = {
    *       requestedRegion: wrtcParams.requestedRegion
    *     }
    *   });
+   *
    *   res.json(answer);
    * });
    * ```
    */
-  withProxyUrl(proxyUrl: string, options: Record<string, any> = {}): Connector {
+  withProxyUrl(proxyUrl: string, options: { turnConfigUrl?: string } = {}): Connector {
+    const { turnConfigUrl } = options;
+
     return {
       connectWrtc: async (offer: WebRTCOffer, wrtcParams: WebRTCParams): Promise<WebRTCWorkerResponse> => {
         const response = await fetch(proxyUrl, {
@@ -394,7 +517,33 @@ export const connectors = {
         }
 
         return await response.json();
-      }
+      },
+
+      /**
+       * Fetch TURN server configuration from the proxy backend
+       * Only available if turnConfigUrl was provided
+       */
+      getIceServers: turnConfigUrl
+        ? async (): Promise<RTCIceServerConfig[] | null> => {
+            try {
+              const response = await fetch(turnConfigUrl, {
+                method: "GET",
+                headers: { "Content-Type": "application/json" }
+              });
+
+              if (!response.ok) {
+                console.warn(`[RFWebRTC] Failed to fetch TURN config from proxy (${response.status})`);
+                return null;
+              }
+
+              const data = await response.json();
+              return data.iceServers || null;
+            } catch (err) {
+              console.warn("[RFWebRTC] Error fetching TURN config from proxy:", err);
+              return null;
+            }
+          }
+        : undefined
     };
   }
 };
