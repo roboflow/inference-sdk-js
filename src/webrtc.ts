@@ -1,6 +1,14 @@
 
 import { InferenceHTTPClient, Connector, WebRTCParams, RTCIceServerConfig } from "./inference-api";
 import { stopStream } from "./streams";
+import {  WebRTCOutputData } from "./webrtc-types";
+
+// Re-export shared types
+export type { WebRTCVideoMetadata, WebRTCOutputData } from "./webrtc-types";
+
+// Re-export video file upload functionality
+export { useVideoFile, FileUploader, VideoFileConnection } from "./video-upload";
+export type { UseVideoFileParams } from "./video-upload";
 
 /**
  * Binary protocol header size (frame_id + chunk_index + total_chunks)
@@ -83,10 +91,10 @@ export interface UseStreamOptions {
 }
 
 export interface UseStreamParams {
-  source: MediaStream;
+  source: MediaStream | File;
   connector: Connector;
   wrtcParams: WebRTCParams;
-  onData?: (data: any) => void;
+  onData?: (data: WebRTCOutputData) => void;
   options?: UseStreamOptions;
 }
 

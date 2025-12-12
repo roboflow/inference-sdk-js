@@ -3,411 +3,143 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Roboflow Inference SDK - WebRTC Demo</title>
+    <title>Roboflow Inference SDK - Examples</title>
     <style>
         :root { color-scheme: light dark; }
         body {
             margin: 0;
             font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
         }
         .container {
-            max-width: 720px;
+            max-width: 800px;
             margin: 0 auto;
-            padding: 16px;
+            padding: 40px 20px;
         }
-        .controls {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin: 16px 0;
-        }
-        h1 {
-            font-size: 24px;
-            margin: 12px 0;
-        }
-        button {
-            appearance: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: 0;
-            font-weight: 600;
-            cursor: pointer;
-            background: #4f46e5;
+        .header {
+            text-align: center;
             color: white;
-            font-size: 14px;
+            margin-bottom: 40px;
         }
-        button:hover:not(:disabled) {
-            background: #4338ca;
+        .header h1 {
+            font-size: 36px;
+            margin: 0 0 12px 0;
+            font-weight: 700;
         }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .header p {
+            font-size: 18px;
+            opacity: 0.9;
+            margin: 0;
         }
-        #status {
-            font-family: ui-monospace, Monaco, Consolas, monospace;
-            font-size: 14px;
-            padding: 8px 12px;
-            background: rgba(0, 0, 0, 0.05);
-            border-radius: 6px;
+        .examples-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
         }
-        .video-container {
-            margin-top: 20px;
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        video {
-            width: 100%;
-            height: auto;
+        .example-card {
+            background: white;
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-decoration: none;
+            color: inherit;
             display: block;
         }
-        .info {
-            margin-top: 20px;
-            padding: 16px;
-            background: rgba(79, 70, 229, 0.08);
-            border-radius: 8px;
-            font-size: 14px;
-            line-height: 1.6;
+        .example-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
         }
-        .info h3 {
+        .example-icon {
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            font-size: 28px;
+        }
+        .example-card h2 {
+            font-size: 20px;
             margin: 0 0 8px 0;
-            font-size: 16px;
-            color: #4f46e5;
+            color: #1f2937;
         }
-        .info code {
-            background: rgba(0, 0, 0, 0.1);
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 13px;
+        .example-card p {
+            font-size: 14px;
+            color: #6b7280;
+            margin: 0 0 16px 0;
+            line-height: 1.5;
+        }
+        .example-tag {
+            display: inline-block;
+            padding: 4px 10px;
+            background: rgba(79, 70, 229, 0.1);
+            color: #4f46e5;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
         }
         .footer {
-            margin: 20px 0;
             text-align: center;
-            font-size: 12px;
-            opacity: 0.7;
+            margin-top: 40px;
+            color: white;
+            opacity: 0.8;
+            font-size: 14px;
+        }
+        .footer a {
+            color: white;
+            text-decoration: underline;
+        }
+        code {
+            background: rgba(0, 0, 0, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: ui-monospace, Monaco, Consolas, monospace;
+            font-size: 13px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Roboflow Inference SDK</h1>
-
-        <div class="controls">
-            <input type="text" id="apiKeyInput" value="" placeholder="Enter your Roboflow API key" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 14px; font-family: ui-monospace, Monaco, Consolas, monospace;">
+        <div class="header">
+            <h1>Roboflow Inference SDK</h1>
+            <p>WebRTC streaming and video processing examples</p>
         </div>
 
-        <div class="controls">
-            <input type="text" id="serverUrlInput" value="https://serverless.roboflow.com" placeholder="Server URL" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 14px; font-family: ui-monospace, Monaco, Consolas, monospace;">
-        </div>
+        <div class="examples-grid">
+            <a href="examples/webcam.html" class="example-card">
+                <div class="example-icon">&#127909;</div>
+                <h2>Webcam Streaming</h2>
+                <p>
+                    Real-time object detection using your webcam.
+                    Video is streamed via WebRTC and processed on Roboflow's servers.
+                </p>
+                <span class="example-tag">webrtc.useStream()</span>
+            </a>
 
-        <div class="controls">
-            <button id="startBtn">Start Camera</button>
-            <button id="stopBtn" disabled>Stop</button>
-            <div id="status">Idle</div>
-        </div>
-
-        <div class="controls" style="flex-direction: column; align-items: stretch; gap: 8px;">
-            <div style="display: flex; gap: 8px;">
-                <button id="reconfigureBtn" disabled style="flex: 1;">Reconfigure Outputs</button>
-            </div>
-            <textarea id="jsonInput" style="width: 100%; min-height: 80px; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 13px; font-family: ui-monospace, Monaco, Consolas, monospace; resize: vertical;">{"dataOutput": ["countis"], "streamOutput": null}</textarea>
-        </div>
-
-        <div class="video-container">
-            <video id="video" autoplay playsinline muted></video>
-        </div>
-
-        <div class="info">
-            <h3>WebRTC Streaming Demo</h3>
-            <p>
-                This demo shows real-time object detection using WebRTC streaming.
-                The video is processed on Roboflow's servers and streamed back with annotations.
-            </p>
-            <ul style="margin: 8px 0;">
-                <li><code>src/inference-api.ts</code> - HTTP client & connectors</li>
-                <li><code>src/streams.ts</code> - Camera utilities</li>
-                <li><code>src/webrtc.ts</code> - WebRTC connection logic</li>
-            </ul>
+            <a href="examples/file-upload.html" class="example-card">
+                <div class="example-icon">&#128193;</div>
+                <h2>Video File Upload</h2>
+                <p>
+                    Upload a video file for batch processing.
+                    Results are streamed back as each frame is processed.
+                </p>
+                <span class="example-tag">webrtc.useVideoFile()</span>
+            </a>
         </div>
 
         <div class="footer">
-            Powered by @roboflow/inference-sdk
+            <p>
+                <code>npm install @roboflow/inference-sdk</code>
+            </p>
+            <p>
+                <a href="https://github.com/roboflow/inference-sdk-js">GitHub</a> &bull;
+                <a href="https://docs.roboflow.com">Documentation</a>
+            </p>
         </div>
     </div>
-
-    <!-- Alternatively, load from CDN (or local dist for testing) -->
-    <!--
-    <script src="https://unpkg.com/inferencejs@latest/dist/inference-api.js"></script>
-    <script src="https://unpkg.com/inferencejs@latest/dist/streams.js"></script>
-    <script src="https://unpkg.com/inferencejs@latest/dist/webrtc.js"></script>
-    -->
-
-    <!-- Load source TypeScript modules as ES modules -->
-    <script type="module">
-        import { InferenceHTTPClient, connectors, webrtc, streams } from '@roboflow/inference-sdk';
-
-        // Get DOM elements
-        const apiKeyInput = document.getElementById("apiKeyInput");
-        const serverUrlInput = document.getElementById("serverUrlInput");
-        const startBtn = document.getElementById("startBtn");
-        const stopBtn = document.getElementById("stopBtn");
-        const reconfigureBtn = document.getElementById("reconfigureBtn");
-        const jsonInput = document.getElementById("jsonInput");
-        const statusEl = document.getElementById("status");
-        const videoEl = document.getElementById("video");
-
-        // Track active connection
-        let activeConnection = null;
-
-        // Workflow specification for segmentation demo
-        const WORKFLOW_SPEC = {
-            "version": "1.0",
-            "inputs": [
-                {
-                    "type": "InferenceImage",
-                    "name": "image"
-                }
-            ],
-            "steps": [
-                {
-                    "type": "roboflow_core/roboflow_object_detection_model@v2",
-                    "name": "model",
-                    "images": "$inputs.image",
-                    "model_id": "rfdetr-medium"
-                },
-                {
-                    "type": "roboflow_core/blur_visualization@v1",
-                    "name": "blur_visualization",
-                    "image": "$inputs.image",
-                    "predictions": "$steps.model.predictions"
-                },
-                {
-                    "type": "roboflow_core/property_definition@v1",
-                    "name": "property_definition",
-                    "data": "$steps.model.predictions",
-                    "operations": [
-                        {
-                            "type": "SequenceLength"
-                        }
-                    ]
-                },
-                {
-                    "type": "roboflow_core/bounding_box_visualization@v1",
-                    "name": "bounding_box_visualization",
-                    "image": "$inputs.image",
-                    "predictions": "$steps.model.predictions"
-                }
-            ],
-            "outputs": [
-                {
-                    "type": "JsonField",
-                    "name": "blur",
-                    "coordinates_system": "own",
-                    "selector": "$steps.blur_visualization.image"
-                },
-                {
-                    "type": "JsonField",
-                    "name": "countis",
-                    "coordinates_system": "own",
-                    "selector": "$steps.property_definition.output"
-                },
-                {
-                    "type": "JsonField",
-                    "name": "bb",
-                    "coordinates_system": "own",
-                    "selector": "$steps.bounding_box_visualization.image"
-                }
-            ]
-        };
-
-        /**
-         * Update status display
-         */
-        function setStatus(text) {
-            statusEl.textContent = text;
-            console.log("[UI Status]", text);
-        }
-
-        /**
-         * Connect to Roboflow WebRTC streaming
-         *
-         * @param {Object} options - Connection options
-         * @param {string} [options.apiKey] - Roboflow API key (defaults to input field)
-         * @param {string} [options.serverUrl] - Optional server URL (defaults to input field)
-         * @param {Object} [options.workflowSpec] - Workflow specification
-         * @param {Function} [options.onData] - Callback for data channel messages
-         * @returns {Promise<RFWebRTCConnection>} WebRTC connection object
-         */
-        async function connectWebcamToRoboflowWebrtc(options = {}) {
-            const {
-                apiKey = apiKeyInput.value.trim(),
-                serverUrl = serverUrlInput.value.trim(),
-                workflowSpec = WORKFLOW_SPEC,
-                onData
-            } = options;
-
-            // Validate API key
-            if (!apiKey) {
-                throw new Error("API key is required");
-            }
-
-            // Create connector with API key
-            const connectorOptions = serverUrl ? { serverUrl } : {};
-            const connector = connectors.withApiKey(apiKey, connectorOptions);
-
-            // Establish WebRTC connection
-            const connection = await webrtc.useStream({
-                source: await streams.useCamera( {
-                    video: {
-                        facingMode: { ideal: "environment" },
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
-                        frameRate: { ideal: 30, max: 30 }
-                    },
-                    audio: false
-                }),
-                connector: connector,
-                wrtcParams: {
-                    workflowSpec: workflowSpec,
-                    // workspaceName: "meh-dq9yn",
-                    // workflowId: "custom-workflow-2",
-                    imageInputName: "image",
-                    streamOutputNames: ["bb"],
-                    dataOutputNames: ["countis"],
-                    outputMode: "both"
-                },
-                onData: onData,
-                options: {
-                    disableInputStreamDownscaling: true
-                }
-            });
-
-            return connection;
-        }
-
-        /**
-         * Start WebRTC streaming with Roboflow
-         */
-        async function start() {
-            if (activeConnection) {
-                console.warn("Already connected");
-                return;
-            }
-
-            // Disable start button while connecting
-            startBtn.disabled = true;
-            setStatus("Connecting...");
-
-            try {
-                // Connect to Roboflow (reads from input fields by default)
-                const connection = await connectWebcamToRoboflowWebrtc({
-                    onData: (data) => {
-                        console.log("[Data]", data);
-                    }
-                });
-
-                activeConnection = connection;
-
-                // Get and display the processed video stream
-                const remoteStream = await connection.remoteStream();
-                videoEl.srcObject = remoteStream;
-                videoEl.controls = false;
-
-                // Ensure video plays
-                try {
-                    await videoEl.play();
-                    console.log("[UI] Video playing");
-                } catch (err) {
-                    console.warn("[UI] Autoplay failed:", err);
-                }
-
-                // Update UI
-                setStatus("Connected - Processing video");
-                stopBtn.disabled = false;
-                reconfigureBtn.disabled = false;
-
-                console.log("[UI] Successfully connected!");
-
-            } catch (err) {
-                console.error("[UI] Connection failed:", err);
-
-                // Handle validation errors
-                if (err.message === "API key is required") {
-                    alert("Please enter your Roboflow API key!");
-                    apiKeyInput.focus();
-                }
-
-                setStatus(`Error: ${err.message}`);
-                startBtn.disabled = false;
-                activeConnection = null;
-            }
-        }
-
-        /**
-         * Stop video processing and cleanup
-         */
-        async function stop() {
-            if (!activeConnection) {
-                return;
-            }
-
-            stopBtn.disabled = true;
-            setStatus("Stopping...");
-
-            try {
-                await activeConnection.cleanup();
-                console.log("[UI] Cleanup complete");
-            } catch (err) {
-                console.error("[UI] Cleanup error:", err);
-            } finally {
-                // Reset UI
-                activeConnection = null;
-                videoEl.srcObject = null;
-                startBtn.disabled = false;
-                stopBtn.disabled = true;
-                reconfigureBtn.disabled = true;
-                setStatus("Idle");
-            }
-        }
-
-        /**
-         * Reconfigure outputs from the textarea
-         */
-        function handleReconfigure() {
-            if (!activeConnection) {
-                console.warn("[UI] No active connection");
-                return;
-            }
-
-            try {
-                const json = JSON.parse(jsonInput.value);
-                console.log("[UI] Reconfiguring outputs:", json);
-                activeConnection.reconfigureOutputs(json);
-                setStatus("Outputs reconfigured - check console");
-            } catch (err) {
-                console.error("[UI] Invalid JSON:", err);
-                alert("Invalid JSON: " + err.message);
-            }
-        }
-
-        // Attach event listeners
-        startBtn.addEventListener("click", start);
-        stopBtn.addEventListener("click", stop);
-        reconfigureBtn.addEventListener("click", handleReconfigure);
-
-        // Cleanup on page unload
-        window.addEventListener("pagehide", () => {
-            if (activeConnection) {
-                activeConnection.cleanup();
-            }
-        });
-
-        window.addEventListener("beforeunload", () => {
-            if (activeConnection) {
-                activeConnection.cleanup();
-            }
-        });
-    </script>
 </body>
 </html>

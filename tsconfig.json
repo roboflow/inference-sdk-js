@@ -22,7 +22,13 @@
     /* Declaration */
     "declaration": true,
     "declarationMap": true,
-    "emitDeclarationOnly": false
+    "emitDeclarationOnly": false,
+
+    /* Path mappings for examples */
+    "baseUrl": ".",
+    "paths": {
+      "@roboflow/inference-sdk": ["./src/index.ts"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "examples"]
 }

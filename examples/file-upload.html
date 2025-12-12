@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Roboflow Inference SDK - Video File Upload Demo</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+        }
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 16px 0;
+        }
+        h1 {
+            font-size: 24px;
+            margin: 12px 0;
+        }
+        button {
+            appearance: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 0;
+            font-weight: 600;
+            cursor: pointer;
+            background: #4f46e5;
+            color: white;
+            font-size: 14px;
+        }
+        button:hover:not(:disabled) {
+            background: #4338ca;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        #status {
+            font-family: ui-monospace, Monaco, Consolas, monospace;
+            font-size: 14px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 6px;
+            flex: 1;
+        }
+        .file-input-wrapper {
+            margin: 16px 0;
+        }
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+        .file-input-wrapper label {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #10b981;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .file-input-wrapper label:hover {
+            background: #059669;
+        }
+        .file-name {
+            margin-left: 12px;
+            font-size: 14px;
+            color: #666;
+        }
+        .progress-container {
+            margin: 20px 0;
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4f46e5, #7c3aed);
+            width: 0%;
+            transition: width 0.2s ease;
+        }
+        .progress-text {
+            text-align: center;
+            margin-top: 8px;
+            font-size: 14px;
+            font-family: ui-monospace, Monaco, Consolas, monospace;
+        }
+        .video-container {
+            margin-top: 20px;
+            display: none;
+        }
+        .video-container video {
+            width: 100%;
+            max-width: 640px;
+            border-radius: 12px;
+            background: #000;
+        }
+        .video-container h3 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+        }
+        .results-container {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+        .results-container h3 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+        }
+        .result-item {
+            padding: 8px;
+            margin: 4px 0;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 6px;
+            font-family: ui-monospace, Monaco, Consolas, monospace;
+            font-size: 12px;
+            word-break: break-all;
+        }
+        .info {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(79, 70, 229, 0.08);
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .info h3 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+            color: #4f46e5;
+        }
+        .info code {
+            background: rgba(0, 0, 0, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        .footer {
+            margin: 20px 0;
+            text-align: center;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 16px;
+            color: #4f46e5;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">&larr; Back to Examples</a>
+
+        <h1>Video File Upload Demo</h1>
+
+        <div class="controls">
+            <input type="text" id="apiKeyInput" value="" placeholder="Enter your Roboflow API key" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 14px; font-family: ui-monospace, Monaco, Consolas, monospace;">
+        </div>
+
+        <div class="controls">
+            <input type="text" id="serverUrlInput" value="https://serverless.roboflow.com" placeholder="Server URL" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 14px; font-family: ui-monospace, Monaco, Consolas, monospace;">
+        </div>
+
+        <div class="file-input-wrapper">
+            <label for="videoFile">Choose Video File</label>
+            <input type="file" id="videoFile" accept="video/*">
+            <span class="file-name" id="fileName">No file selected</span>
+        </div>
+
+        <div class="controls">
+            <button id="uploadBtn" disabled>Upload & Process</button>
+            <button id="stopBtn" disabled>Stop</button>
+            <div id="status">Select a video file</div>
+        </div>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">0%</div>
+        </div>
+
+        <div class="video-container" id="videoContainer">
+            <h3>Processed Video Stream</h3>
+            <video id="remoteVideo" autoplay muted playsinline></video>
+        </div>
+
+        <div class="results-container" id="resultsContainer">
+            <h3>Inference Results</h3>
+            <div id="resultsList"></div>
+        </div>
+
+        <div class="info">
+            <h3>Video File Upload Demo</h3>
+            <p>
+                This demo uploads a video file and processes it through a Roboflow workflow.
+                Results are streamed back as each frame is processed.
+            </p>
+            <ul style="margin: 8px 0;">
+                <li><code>webrtc.useVideoFile()</code> - Upload and process video files</li>
+                <li><code>onUploadProgress</code> - Track upload progress</li>
+                <li><code>onData</code> - Receive per-frame inference results</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            Powered by @roboflow/inference-sdk
+        </div>
+    </div>
+
+    <script type="module" src="./file-upload.ts"></script>
+</body>
+</html>

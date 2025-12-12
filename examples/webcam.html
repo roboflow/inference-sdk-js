@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Roboflow Inference SDK - WebRTC Demo</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+        }
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 16px 0;
+        }
+        h1 {
+            font-size: 24px;
+            margin: 12px 0;
+        }
+        button {
+            appearance: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 0;
+            font-weight: 600;
+            cursor: pointer;
+            background: #4f46e5;
+            color: white;
+            font-size: 14px;
+        }
+        button:hover:not(:disabled) {
+            background: #4338ca;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        #status {
+            font-family: ui-monospace, Monaco, Consolas, monospace;
+            font-size: 14px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 6px;
+        }
+        .video-container {
+            margin-top: 20px;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .info {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(79, 70, 229, 0.08);
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .info h3 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+            color: #4f46e5;
+        }
+        .info code {
+            background: rgba(0, 0, 0, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        .footer {
+            margin: 20px 0;
+            text-align: center;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 16px;
+            color: #4f46e5;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">&larr; Back to Examples</a>
+
+        <h1>Webcam Streaming Demo</h1>
+
+        <div class="controls">
+            <input type="text" id="apiKeyInput" value="" placeholder="Enter your Roboflow API key" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 14px; font-family: ui-monospace, Monaco, Consolas, monospace;">
+        </div>
+
+        <div class="controls">
+            <input type="text" id="serverUrlInput" value="https://serverless.roboflow.com" placeholder="Server URL" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 14px; font-family: ui-monospace, Monaco, Consolas, monospace;">
+        </div>
+
+        <div class="controls">
+            <button id="startBtn">Start Camera</button>
+            <button id="stopBtn" disabled>Stop</button>
+            <div id="status">Idle</div>
+        </div>
+
+        <div class="controls" style="flex-direction: column; align-items: stretch; gap: 8px;">
+            <div style="display: flex; gap: 8px;">
+                <button id="reconfigureBtn" disabled style="flex: 1;">Reconfigure Outputs</button>
+            </div>
+            <textarea id="jsonInput" style="width: 100%; min-height: 80px; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 13px; font-family: ui-monospace, Monaco, Consolas, monospace; resize: vertical;">{"dataOutput": ["countis"], "streamOutput": null}</textarea>
+        </div>
+
+        <div class="video-container">
+            <video id="video" autoplay playsinline muted></video>
+        </div>
+
+        <div class="info">
+            <h3>WebRTC Streaming Demo</h3>
+            <p>
+                This demo shows real-time object detection using WebRTC streaming.
+                The video is processed on Roboflow's servers and streamed back with annotations.
+            </p>
+            <ul style="margin: 8px 0;">
+                <li><code>src/inference-api.ts</code> - HTTP client & connectors</li>
+                <li><code>src/streams.ts</code> - Camera utilities</li>
+                <li><code>src/webrtc.ts</code> - WebRTC connection logic</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            Powered by @roboflow/inference-sdk
+        </div>
+    </div>
+
+    <script type="module" src="./webcam.ts"></script>
+</body>
+</html>

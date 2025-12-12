@@ -41,6 +41,12 @@ export interface WebRTCWorkerConfig {
    * @example "us"
    */
   requestedRegion?: string;
+  /**
+   * Set to false for file upload mode (batch processing).
+   * When false, server processes all frames sequentially instead of dropping frames.
+   * @default true
+   */
+  realtimeProcessing?: boolean;
 }
 
 /**
@@ -116,6 +122,12 @@ export interface WebRTCParams {
    * @example "us"
    */
   requestedRegion?: string;
+  /**
+   * Set to false for file upload mode (batch processing).
+   * When false, server processes all frames sequentially instead of dropping frames.
+   * @default true
+   */
+  realtimeProcessing?: boolean;
 }
 
 export interface Connector {
@@ -214,7 +226,8 @@ export class InferenceHTTPClient {
       iceServers,
       processingTimeout,
       requestedPlan,
-      requestedRegion
+      requestedRegion,
+      realtimeProcessing = true
     } = config;
 
     // Build workflow_configuration based on what's provided
@@ -237,7 +250,7 @@ export class InferenceHTTPClient {
     const payload: Record<string, any> = {
       workflow_configuration: workflowConfiguration,
       api_key: this.apiKey,
-      webrtc_realtime_processing: true,
+      webrtc_realtime_processing: realtimeProcessing,
       webrtc_offer: {
         sdp: offer.sdp,
         type: offer.type
@@ -257,7 +270,6 @@ export class InferenceHTTPClient {
     if (requestedRegion !== undefined) {
       payload.requested_region = requestedRegion;
     }
-    console.trace("payload", payload);
     const response = await fetch(`${this.serverUrl}/initialise_webrtc_worker`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -399,7 +411,7 @@ export const connectors = {
 
     return {
       connectWrtc: async (offer: WebRTCOffer, wrtcParams: WebRTCParams): Promise<WebRTCWorkerResponse> => {
-        console.log("wrtcParams", wrtcParams);
+        console.debug("wrtcParams", wrtcParams);
         const answer = await client.initializeWebrtcWorker({
           offer,
           workflowSpec: wrtcParams.workflowSpec,
@@ -414,7 +426,8 @@ export const connectors = {
             iceServers: wrtcParams.iceServers,
             processingTimeout: wrtcParams.processingTimeout,
             requestedPlan: wrtcParams.requestedPlan,
-            requestedRegion: wrtcParams.requestedRegion
+            requestedRegion: wrtcParams.requestedRegion,
+            realtimeProcessing: wrtcParams.realtimeProcessing
           }
         });
 
