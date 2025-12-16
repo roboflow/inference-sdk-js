@@ -125,8 +125,7 @@ async function connectWebcamToRoboflowWebrtc(options: {
             // workflowId: "custom-workflow-2",
             imageInputName: "image",
             streamOutputNames: ["bb"],
-            dataOutputNames: ["countis"],
-            outputMode: "both"
+            dataOutputNames: ["countis"]
         },
         onData: onData,
         options: {

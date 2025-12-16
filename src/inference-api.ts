@@ -228,7 +228,7 @@ export class InferenceHTTPClient {
       requestedPlan,
       requestedRegion,
       realtimeProcessing = true
-    } = config;
+    } = config as any;
 
     // Build workflow_configuration based on what's provided
     const workflowConfiguration: any = {
@@ -317,11 +317,10 @@ export class InferenceHTTPClient {
    * ```
    */
   async fetchTurnConfig(): Promise<RTCIceServerConfig[] | null> {
-    // Only fetch TURN config for Roboflow serverless URLs
-    if (!ROBOFLOW_SERVERLESS_URLS.includes(this.serverUrl)) {
-      return null;
-    }
-
+    // // Only fetch TURN config for Roboflow serverless URLs
+    // if (!ROBOFLOW_SERVERLESS_URLS.includes(this.serverUrl)) {
+    //   return null;
+    // }
     try {
       const response = await fetch(
         `${RF_API_BASE_URL}/webrtc_turn_config?api_key=${this.apiKey}`,
