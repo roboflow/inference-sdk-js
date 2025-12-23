@@ -234,7 +234,7 @@ export class InferenceHTTPClient {
     const {
       imageInputName = "image",
       streamOutputNames = [],
-      dataOutputNames = ["string"],
+      dataOutputNames = [],
       threadPoolWorkers = 4,
       workflowsParameters = {},
       iceServers,

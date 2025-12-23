@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Roboflow Inference SDK - Advanced WebRTC Demo</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 16px 0;
+        }
+        h1 {
+            font-size: 24px;
+            margin: 12px 0;
+        }
+        h2 {
+            font-size: 18px;
+            margin: 20px 0 12px 0;
+            color: #4f46e5;
+        }
+        button {
+            appearance: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 0;
+            font-weight: 600;
+            cursor: pointer;
+            background: #4f46e5;
+            color: white;
+            font-size: 14px;
+        }
+        button:hover:not(:disabled) {
+            background: #4338ca;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        button.secondary {
+            background: #6b7280;
+        }
+        button.secondary:hover:not(:disabled) {
+            background: #4b5563;
+        }
+        #status {
+            font-family: ui-monospace, Monaco, Consolas, monospace;
+            font-size: 14px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 6px;
+        }
+        .video-container {
+            margin-top: 20px;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .stats-panel {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.03);
+            border-radius: 8px;
+            font-family: ui-monospace, Monaco, Consolas, monospace;
+            font-size: 13px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        .stat-item {
+            padding: 8px 12px;
+            background: rgba(79, 70, 229, 0.08);
+            border-radius: 6px;
+        }
+        .stat-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            opacity: 0.7;
+            margin-bottom: 4px;
+        }
+        .stat-value {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .hooks-log {
+            margin-top: 16px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 12px;
+            background: #1e1e1e;
+            border-radius: 8px;
+            color: #d4d4d4;
+            font-family: ui-monospace, Monaco, Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .hooks-log .hook-event {
+            margin: 2px 0;
+        }
+        .hooks-log .hook-name {
+            color: #569cd6;
+        }
+        .hooks-log .hook-time {
+            color: #6a9955;
+        }
+        .hooks-log .hook-detail {
+            color: #ce9178;
+        }
+        .info {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(79, 70, 229, 0.08);
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .info h3 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+            color: #4f46e5;
+        }
+        .info code {
+            background: rgba(0, 0, 0, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        .footer {
+            margin: 20px 0;
+            text-align: center;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 16px;
+            color: #4f46e5;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin: 12px 0;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">&larr; Back to Examples</a>
+
+        <h1>Advanced WebRTC Demo</h1>
+        <p style="margin-top: 0; opacity: 0.8;">
+            Demonstrates advanced SDK features: lifecycle hooks, connection stats, and video encoding options.
+        </p>
+
+        <div class="controls">
+            <input type="text" id="apiKeyInput" value="" placeholder="Enter your Roboflow API key" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 14px; font-family: ui-monospace, Monaco, Consolas, monospace;">
+        </div>
+
+        <div class="controls">
+            <input type="text" id="serverUrlInput" value="https://serverless.roboflow.com" placeholder="Server URL" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); font-size: 14px; font-family: ui-monospace, Monaco, Consolas, monospace;">
+        </div>
+
+        <h2>Video Encoding Options</h2>
+        <div class="checkbox-group">
+            <label>
+                <input type="checkbox" id="contentHintMotion" checked>
+                Content hint: motion
+            </label>
+            <label>
+                <input type="checkbox" id="disableDownscaling" checked>
+                Disable input downscaling
+            </label>
+            <label>
+                <input type="checkbox" id="preferH264">
+                Prefer H.264 codec
+            </label>
+        </div>
+
+        <div class="controls">
+            <button id="startBtn">Start Camera</button>
+            <button id="stopBtn" disabled>Stop</button>
+            <button id="getStatsBtn" class="secondary" disabled>Get Stats</button>
+            <div id="status">Idle</div>
+        </div>
+
+        <div class="video-container">
+            <video id="video" autoplay playsinline muted></video>
+        </div>
+
+        <h2>Connection Stats</h2>
+        <div class="stats-panel">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-label">Connection State</div>
+                    <div class="stat-value" id="statConnectionState">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">ICE State</div>
+                    <div class="stat-value" id="statIceState">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Outbound Bitrate</div>
+                    <div class="stat-value" id="statBitrate">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Frames Sent</div>
+                    <div class="stat-value" id="statFramesSent">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Codec (Outbound)</div>
+                    <div class="stat-value" id="statCodec">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Resolution (Sent)</div>
+                    <div class="stat-value" id="statResolution">-</div>
+                </div>
+            </div>
+        </div>
+
+        <h2>Lifecycle Hooks Log</h2>
+        <div class="hooks-log" id="hooksLog">
+            <div style="opacity: 0.5;">Hook events will appear here when connection starts...</div>
+        </div>
+
+        <div class="info">
+            <h3>Advanced Features Demonstrated</h3>
+            <ul style="margin: 8px 0;">
+                <li><code>hooks.onPeerConnectionCreated</code> - Monitor connection state changes</li>
+                <li><code>hooks.onTrackAdded</code> - Set content hints and codec preferences</li>
+                <li><code>hooks.onOfferCreated</code> - Inspect/modify SDP offer</li>
+                <li><code>connection.peerConnection</code> - Access RTCPeerConnection for stats</li>
+                <li><code>options.disableInputStreamDownscaling</code> - Send full resolution video</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            Powered by @roboflow/inference-sdk
+        </div>
+    </div>
+
+    <script type="module" src="./webcam-advanced.ts"></script>
+</body>
+</html>
