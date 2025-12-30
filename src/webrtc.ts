@@ -323,6 +323,7 @@ export class RFWebRTCConnection {
    */
   public readonly dataChannel: RTCDataChannel;
   private reassembler: ChunkReassembler;
+  private ackPacingEnabled: boolean;
   /**
    * The data channel used for uploading video files (only available in file upload mode).
    * Exposed for advanced use cases.
@@ -343,6 +344,8 @@ export class RFWebRTCConnection {
       uploadChannel?: RTCDataChannel;
       onData?: (data: any) => void;
       onComplete?: () => void;
+      /** @internal Enable server pacing via cumulative ACKs (only used when realtimeProcessing=false). */
+      ackPacingEnabled?: boolean;
     }
   ) {
     this.peerConnection = pc;
@@ -352,6 +355,7 @@ export class RFWebRTCConnection {
     this.apiKey = apiKey;
     this.dataChannel = dataChannel;
     this.reassembler = new ChunkReassembler();
+    this.ackPacingEnabled = options?.ackPacingEnabled === true;
     this.uploadChannel = options?.uploadChannel;
     this.onComplete = options?.onComplete;
 
@@ -374,7 +378,11 @@ export class RFWebRTCConnection {
               const decoder = new TextDecoder("utf-8");
               const jsonString = decoder.decode(completePayload);
               const data = JSON.parse(jsonString);
-              onData(data);
+              // Wait for onData completion (supports async handlers) before ACKing the frame.
+              Promise.resolve(onData(data))
+                .finally(() => {
+                  this.maybeSendAck(frameId);
+                })
             }
           } else {
             // Fallback for string messages (shouldn't happen with new protocol)
@@ -398,6 +406,17 @@ export class RFWebRTCConnection {
         this.onComplete();
       }
     });
+  }
+
+  /**
+   * Send cumulative ACK after a frame is fully handled.
+   * Only used in batch mode (realtimeProcessing=false).
+   */
+  private maybeSendAck(frameId: number): void {
+    if (!this.ackPacingEnabled) return;
+    if (this.dataChannel.readyState !== "open") return;
+
+    this.dataChannel.send(JSON.stringify({ ack: frameId }));
   }
 
   /**
@@ -706,6 +725,7 @@ async function baseUseStream({
   const apiKey = connector._apiKey || null;
 
   // Step 7: Create connection object
+  const ackPacingEnabled = resolvedWrtcParams.realtimeProcessing === false;
   const connection = new RFWebRTCConnection(
     pc,
     remoteStreamPromise,
@@ -716,7 +736,8 @@ async function baseUseStream({
       localStream,
       uploadChannel,
       onData,
-      onComplete
+      onComplete,
+      ackPacingEnabled
     }
   );
 
