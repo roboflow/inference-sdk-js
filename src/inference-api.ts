@@ -1,8 +1,7 @@
 /**
- * Base URL for the Roboflow API (used for TURN server configuration)
- * Can be overridden via environment variable in Node.js environments
+ * Default base URL for the Roboflow API (used for TURN server configuration)
  */
-const RF_API_BASE_URL = typeof process !== "undefined" && process.env?.RF_API_BASE_URL
+const DEFAULT_RF_API_BASE_URL = typeof process !== "undefined" && process.env?.RF_API_BASE_URL
   ? process.env.RF_API_BASE_URL
   : "https://api.roboflow.com";
 
@@ -161,21 +160,23 @@ export interface Connector {
 export class InferenceHTTPClient {
   private apiKey: string;
   private serverUrl: string;
+  private apiBaseUrl: string;
 
   /**
    * @private
    * Use InferenceHTTPClient.init() instead
    */
-  private constructor(apiKey: string, serverUrl: string = "https://serverless.roboflow.com") {
+  private constructor(apiKey: string, serverUrl: string = "https://serverless.roboflow.com", apiBaseUrl: string = DEFAULT_RF_API_BASE_URL) {
     this.apiKey = apiKey;
     this.serverUrl = serverUrl;
+    this.apiBaseUrl = apiBaseUrl;
   }
 
-  static init({ apiKey, serverUrl }: { apiKey: string; serverUrl?: string }): InferenceHTTPClient {
+  static init({ apiKey, serverUrl, apiBaseUrl }: { apiKey: string; serverUrl?: string; apiBaseUrl?: string }): InferenceHTTPClient {
     if (!apiKey) {
       throw new Error("apiKey is required");
     }
-    return new InferenceHTTPClient(apiKey, serverUrl);
+    return new InferenceHTTPClient(apiKey, serverUrl, apiBaseUrl);
   }
 
   /**
@@ -336,13 +337,13 @@ export class InferenceHTTPClient {
    * ```
    */
   async fetchTurnConfig(): Promise<RTCIceServerConfig[] | null> {
-    // // Only fetch TURN config for Roboflow serverless URLs
+    // Only fetch TURN config for Roboflow serverless URLs
     if (!ROBOFLOW_SERVERLESS_URLS.includes(this.serverUrl)) {
       return null;
     }
     try {
       const response = await fetch(
-        `${RF_API_BASE_URL}/webrtc_turn_config?api_key=${this.apiKey}`,
+        `${this.apiBaseUrl}/webrtc_turn_config?api_key=${this.apiKey}`,
         {
           method: "GET",
           headers: { "Content-Type": "application/json" }
@@ -413,8 +414,8 @@ export const connectors = {
    * const answer = await connector.connectWrtc(offer, wrtcParams);
    * ```
    */
-  withApiKey(apiKey: string, options: { serverUrl?: string } = {}): Connector {
-    const { serverUrl } = options;
+  withApiKey(apiKey: string, options: { serverUrl?: string; apiBaseUrl?: string } = {}): Connector {
+    const { serverUrl, apiBaseUrl } = options;
 
     // Warn if running in browser context
     if (typeof window !== 'undefined') {
@@ -425,7 +426,7 @@ export const connectors = {
       );
     }
 
-    const client = InferenceHTTPClient.init({ apiKey, serverUrl });
+    const client = InferenceHTTPClient.init({ apiKey, serverUrl, apiBaseUrl });
 
     return {
       connectWrtc: async (offer: WebRTCOffer, wrtcParams: WebRTCParams): Promise<WebRTCWorkerResponse> => {
