@@ -9,7 +9,8 @@ const DEFAULT_RF_API_BASE_URL = typeof process !== "undefined" && process.env?.R
  * List of known Roboflow serverless API URLs where auto TURN config applies
  */
 const ROBOFLOW_SERVERLESS_URLS = [
-  "https://serverless.roboflow.com"
+  "https://serverless.roboflow.com",
+  "https://serverless.roboflow.one"
 ];
 
 export interface WebRTCWorkerConfig {
