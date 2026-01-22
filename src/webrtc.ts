@@ -104,6 +104,8 @@ async function waitForIceGathering(pc: RTCPeerConnection, timeoutMs = 6000): Pro
   if (pc.iceGatheringState === "complete") return;
 
   let hasSrflx = false;
+  let gatheringStateHandler: (() => void) | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   // Track if we get a good candidate (srflx = public IP via STUN)
   const candidateHandler = (event: RTCPeerConnectionIceEvent) => {
@@ -116,16 +118,15 @@ async function waitForIceGathering(pc: RTCPeerConnection, timeoutMs = 6000): Pro
   try {
     await Promise.race([
       new Promise<void>(resolve => {
-        const check = () => {
+        gatheringStateHandler = () => {
           if (pc.iceGatheringState === "complete") {
-            pc.removeEventListener("icegatheringstatechange", check);
             resolve();
           }
         };
-        pc.addEventListener("icegatheringstatechange", check);
+        pc.addEventListener("icegatheringstatechange", gatheringStateHandler);
       }),
       new Promise<void>((resolve, reject) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           if (!hasSrflx) {
             console.error("[ICE] timeout with NO srflx candidate! Connection may fail.");
             reject(new Error("ICE gathering timeout without srflx candidate"));
@@ -136,7 +137,14 @@ async function waitForIceGathering(pc: RTCPeerConnection, timeoutMs = 6000): Pro
       })
     ]);
   } finally {
+    // Clean up all listeners and timers
     pc.removeEventListener("icecandidate", candidateHandler);
+    if (gatheringStateHandler) {
+      pc.removeEventListener("icegatheringstatechange", gatheringStateHandler);
+    }
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -693,13 +701,30 @@ async function baseUseStream({
 
   // Step 5: Wait for connection to establish
   await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = () => {
+      pc.removeEventListener("connectionstatechange", checkState);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
     const checkState = () => {
-      if (pc.connectionState === "connected") {
-        pc.removeEventListener("connectionstatechange", checkState);
+      if (settled) return;
+
+      const state = pc.connectionState;
+      if (state === "connected") {
+        settled = true;
+        cleanup();
         resolve();
-      } else if (pc.connectionState === "failed") {
-        pc.removeEventListener("connectionstatechange", checkState);
-        reject(new Error("WebRTC connection failed"));
+      } else if (state === "failed" || state === "closed" || state === "disconnected") {
+        // Handle all terminal/failure states immediately
+        settled = true;
+        cleanup();
+        reject(new Error(`WebRTC connection ${state}`));
       }
     };
 
@@ -707,8 +732,10 @@ async function baseUseStream({
     checkState(); // Check immediately in case already connected
 
     // Timeout after 30 seconds
-    setTimeout(() => {
-      pc.removeEventListener("connectionstatechange", checkState);
+    timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       reject(new Error("WebRTC connection timeout after 30s"));
     }, 30000);
   });
