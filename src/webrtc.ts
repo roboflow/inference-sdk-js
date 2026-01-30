@@ -178,9 +178,55 @@ async function preparePeerConnection(
   }
 
   const iceServers = customIceServers ?? DEFAULT_ICE_SERVERS;
+  console.log("[RFWebRTC] Creating peer connection with ICE servers:", JSON.stringify(iceServers));
 
   const pc = new RTCPeerConnection({
     iceServers: iceServers as RTCIceServer[]
+  });
+  
+  // Track connection start time for debugging
+  const connectionStartTime = Date.now();
+  
+  // Add comprehensive debug logging for connection state
+  pc.addEventListener("connectionstatechange", () => {
+    const elapsed = ((Date.now() - connectionStartTime) / 1000).toFixed(1);
+    console.log(`[RFWebRTC] [${elapsed}s] connectionState: ${pc.connectionState}`);
+  });
+  
+  pc.addEventListener("iceconnectionstatechange", () => {
+    const elapsed = ((Date.now() - connectionStartTime) / 1000).toFixed(1);
+    console.log(`[RFWebRTC] [${elapsed}s] iceConnectionState: ${pc.iceConnectionState}`);
+    
+    // Log additional details on failure
+    if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+      console.error(`[RFWebRTC] ICE ${pc.iceConnectionState}! Check network/firewall.`);
+    }
+  });
+  
+  pc.addEventListener("icegatheringstatechange", () => {
+    const elapsed = ((Date.now() - connectionStartTime) / 1000).toFixed(1);
+    console.log(`[RFWebRTC] [${elapsed}s] iceGatheringState: ${pc.iceGatheringState}`);
+  });
+  
+  pc.addEventListener("signalingstatechange", () => {
+    const elapsed = ((Date.now() - connectionStartTime) / 1000).toFixed(1);
+    console.log(`[RFWebRTC] [${elapsed}s] signalingState: ${pc.signalingState}`);
+  });
+  
+  // Log ICE candidates for debugging connectivity issues
+  pc.addEventListener("icecandidate", (event) => {
+    if (event.candidate) {
+      const c = event.candidate;
+      console.log(`[RFWebRTC] ICE candidate: type=${c.type} protocol=${c.protocol} address=${c.address}:${c.port}`);
+    } else {
+      console.log("[RFWebRTC] ICE gathering complete (null candidate)");
+    }
+  });
+  
+  // Log ICE candidate errors
+  pc.addEventListener("icecandidateerror", (event: Event) => {
+    const e = event as RTCPeerConnectionIceErrorEvent;
+    console.error(`[RFWebRTC] ICE candidate error: ${e.errorCode} ${e.errorText} (${e.url})`);
   });
 
   // Call onPeerConnectionCreated hook
@@ -215,11 +261,28 @@ async function preparePeerConnection(
   const dataChannel = pc.createDataChannel("inference", {
     ordered: true
   });
+  
+  // Add datachannel state logging
+  dataChannel.addEventListener("open", () => {
+    console.log("[RFWebRTC] Data channel 'inference' opened");
+  });
+  dataChannel.addEventListener("close", () => {
+    console.log("[RFWebRTC] Data channel 'inference' closed");
+  });
+  dataChannel.addEventListener("error", (e) => {
+    console.error("[RFWebRTC] Data channel 'inference' error:", e);
+  });
 
   // Create upload datachannel for file uploads (not needed for RTSP)
   let uploadChannel: RTCDataChannel | undefined;
   if (file) {
     uploadChannel = pc.createDataChannel("video_upload");
+    uploadChannel.addEventListener("open", () => {
+      console.log("[RFWebRTC] Upload channel opened");
+    });
+    uploadChannel.addEventListener("close", () => {
+      console.log("[RFWebRTC] Upload channel closed");
+    });
   }
 
   // Create offer
@@ -402,10 +465,53 @@ export class RFWebRTCConnection {
     // Handle channel close - call onComplete when processing finishes
     this.dataChannel.addEventListener("close", () => {
       this.reassembler.clear();
+      this._stopStatsReporter();
       if (this.onComplete) {
         this.onComplete();
       }
     });
+    
+    // Start periodic stats reporting
+    this._startStatsReporter();
+  }
+  
+  private _statsInterval?: ReturnType<typeof setInterval>;
+  
+  /** @private Start periodic WebRTC stats reporting */
+  private _startStatsReporter(): void {
+    this._statsInterval = setInterval(async () => {
+      try {
+        const stats = await this.peerConnection.getStats();
+        let candidatePairStats: any = null;
+        
+        stats.forEach((report) => {
+          if (report.type === "candidate-pair" && report.state === "succeeded") {
+            candidatePairStats = report;
+          }
+        });
+        
+        if (candidatePairStats) {
+          const rtt = candidatePairStats.currentRoundTripTime;
+          const bytesReceived = candidatePairStats.bytesReceived;
+          const bytesSent = candidatePairStats.bytesSent;
+          console.log(
+            `[RFWebRTC] Stats: RTT=${rtt ? (rtt * 1000).toFixed(0) + "ms" : "N/A"} ` +
+            `sent=${(bytesSent / 1024).toFixed(0)}KB recv=${(bytesReceived / 1024).toFixed(0)}KB ` +
+            `ice=${this.peerConnection.iceConnectionState} conn=${this.peerConnection.connectionState}`
+          );
+        }
+      } catch (e) {
+        // Stats may fail if connection is closed
+      }
+    }, 5000); // Report every 5 seconds
+  }
+  
+  /** @private Stop the stats reporter */
+  private _stopStatsReporter(): void {
+    if (this._statsInterval) {
+      clearInterval(this._statsInterval);
+      this._statsInterval = undefined;
+    }
   }
 
   /**
@@ -469,10 +575,15 @@ export class RFWebRTCConnection {
    * ```
    */
   async cleanup(): Promise<void> {
+    console.log("[RFWebRTC] cleanup() called");
+    
     // Cancel any ongoing upload
     if (this.uploader) {
       this.uploader.cancel();
     }
+    
+    // Stop stats reporter
+    this._stopStatsReporter();
 
     // Clear pending chunks
     this.reassembler.clear();
