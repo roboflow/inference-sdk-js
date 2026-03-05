@@ -6,6 +6,41 @@ const DEFAULT_RF_API_BASE_URL = typeof process !== "undefined" && process.env?.R
   : "https://api.roboflow.com";
 
 /**
+ * Structured workflow error data from the backend
+ */
+export interface WorkflowErrorData {
+  message: string;
+  error_type?: string;
+  context?: string;
+  inner_error_type?: string;
+  inner_error_message?: string;
+  blocks_errors?: Array<{
+    block_id: string;
+    block_type?: string;
+    block_details?: string;
+    property_name?: string;
+    property_details?: string;
+    traceback?: string;
+  }>;
+}
+
+/**
+ * Error with structured data from the workflow backend
+ */
+export class WorkflowError extends Error {
+  public readonly errorData: WorkflowErrorData;
+  public readonly statusCode: number;
+
+  constructor(message: string, statusCode: number, errorData: WorkflowErrorData) {
+    super(message);
+    this.name = "WorkflowError";
+    this.statusCode = statusCode;
+    this.errorData = errorData;
+    Object.setPrototypeOf(this, WorkflowError.prototype);
+  }
+}
+
+/**
  * List of known Roboflow serverless API URLs where auto TURN config applies
  */
 const ROBOFLOW_SERVERLESS_URLS = [
@@ -306,6 +341,14 @@ export class InferenceHTTPClient {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
+      const errorData = this.tryParseErrorData(errorText);
+      if (errorData) {
+        throw new WorkflowError(
+          `initialise_webrtc_worker failed (${response.status}): ${errorData.message}`,
+          response.status,
+          errorData
+        );
+      }
       throw new Error(`initialise_webrtc_worker failed (${response.status}): ${errorText}`);
     }
 
@@ -395,6 +438,15 @@ export class InferenceHTTPClient {
       return iceServers;
     } catch (err) {
       console.warn("[RFWebRTC] Error fetching TURN config:", err);
+      return null;
+    }
+  }
+
+  private tryParseErrorData(text: string): WorkflowErrorData | null {
+    try {
+      const parsed = JSON.parse(text);
+      return parsed.message ? parsed : null;
+    } catch {
       return null;
     }
   }
