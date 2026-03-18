@@ -171,10 +171,27 @@ async function waitForIceGathering(pc: RTCPeerConnection, timeoutMs = 6000): Pro
 }
 
 function setupRemoteStreamListener(pc: RTCPeerConnection): Promise<MediaStream> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    let resolved = false;
+    
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        reject(new Error("Remote stream timeout - track event never fired"));
+      }
+    }, 30000);
+    
     pc.addEventListener("track", (event: RTCTrackEvent) => {
       if (event.streams && event.streams[0]) {
+        resolved = true;
+        clearTimeout(timeout);
         resolve(event.streams[0]);
+      } else if (event.track) {
+        // For RTSP mode, the track might not have an associated stream
+        // Create a new MediaStream with the track
+        const stream = new MediaStream([event.track]);
+        resolved = true;
+        clearTimeout(timeout);
+        resolve(stream);
       }
     });
   });
@@ -720,7 +737,6 @@ async function baseUseStream({
   const sdpAnswer = { sdp: answer.sdp, type: answer.type } as RTCSessionDescriptionInit;
 
   if (!sdpAnswer?.sdp || !sdpAnswer?.type) {
-    console.error("[RFWebRTC] Invalid answer from server:", answer);
     throw new Error("connector.connectWrtc must return answer with sdp and type");
   }
 
@@ -731,11 +747,26 @@ async function baseUseStream({
 
   // Step 5: Wait for connection to establish
   await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    
+    // Timeout after 30 seconds
+    const timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      pc.removeEventListener("connectionstatechange", checkState);
+      reject(new Error("WebRTC connection timeout after 30s"));
+    }, 30000);
+    
     const checkState = () => {
+      if (settled) return;
       if (pc.connectionState === "connected") {
+        settled = true;
+        clearTimeout(timeoutId);
         pc.removeEventListener("connectionstatechange", checkState);
         resolve();
       } else if (pc.connectionState === "failed") {
+        settled = true;
+        clearTimeout(timeoutId);
         pc.removeEventListener("connectionstatechange", checkState);
         reject(new Error("WebRTC connection failed"));
       }
@@ -743,12 +774,6 @@ async function baseUseStream({
 
     pc.addEventListener("connectionstatechange", checkState);
     checkState(); // Check immediately in case already connected
-
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      pc.removeEventListener("connectionstatechange", checkState);
-      reject(new Error("WebRTC connection timeout after 30s"));
-    }, 30000);
   });
 
   // Step 6: Optimize quality for MediaStream (disable downsampling by default)
