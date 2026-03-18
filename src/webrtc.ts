@@ -731,11 +731,25 @@ async function baseUseStream({
 
   // Step 5: Wait for connection to establish
   await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    
+    const timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      pc.removeEventListener("connectionstatechange", checkState);
+      reject(new Error("WebRTC connection timeout after 30s"));
+    }, 30000);
+    
     const checkState = () => {
+      if (settled) return;
       if (pc.connectionState === "connected") {
+        settled = true;
+        clearTimeout(timeoutId);
         pc.removeEventListener("connectionstatechange", checkState);
         resolve();
       } else if (pc.connectionState === "failed") {
+        settled = true;
+        clearTimeout(timeoutId);
         pc.removeEventListener("connectionstatechange", checkState);
         reject(new Error("WebRTC connection failed"));
       }
@@ -743,12 +757,6 @@ async function baseUseStream({
 
     pc.addEventListener("connectionstatechange", checkState);
     checkState(); // Check immediately in case already connected
-
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      pc.removeEventListener("connectionstatechange", checkState);
-      reject(new Error("WebRTC connection timeout after 30s"));
-    }, 30000);
   });
 
   // Step 6: Optimize quality for MediaStream (disable downsampling by default)
