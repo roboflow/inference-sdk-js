@@ -6,6 +6,17 @@ const DEFAULT_RF_API_BASE_URL = typeof process !== "undefined" && process.env?.R
   : "https://api.roboflow.com";
 
 /**
+ * Traceback details for a block that failed during execution
+ */
+export interface BlockTraceback {
+  traceback?: string;
+  error_line?: number;
+  code_snippet?: string;
+  stdout?: string;
+  stderr?: string;
+}
+
+/**
  * Structured workflow error data from the backend
  */
 export interface WorkflowErrorData {
@@ -15,12 +26,12 @@ export interface WorkflowErrorData {
   inner_error_type?: string;
   inner_error_message?: string;
   blocks_errors?: Array<{
-    block_id: string;
+    block_id?: string;
     block_type?: string;
     block_details?: string;
     property_name?: string;
     property_details?: string;
-    traceback?: string;
+    block_traceback?: BlockTraceback;
   }>;
 }
 
