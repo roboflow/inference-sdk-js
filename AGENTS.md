@@ -32,6 +32,9 @@ The library uses a modular export pattern with three main modules:
    - `InferenceHTTPClient` - Handles API communication with Roboflow serverless backend
    - `connectors.withApiKey()` - Direct API key connector (for demos/testing only)
    - `connectors.withProxyUrl()` - Proxy-based connector (recommended for production)
+   - `WorkflowError` / `WorkflowErrorData` - Structured error class thrown by both
+     connectors and `InferenceHTTPClient.initializeWebrtcWorker()` when the
+     backend returns a structured failure (see Error Handling below)
    - Exports all types: `WebRTCParams`, `Connector`, `WorkflowSpec`, etc.
 
 2. **`webrtc.ts`** - WebRTC streaming implementation
@@ -92,6 +95,27 @@ The connector abstraction allows flexible authentication methods:
 - **`withProxyUrl()`** - Production-safe pattern where frontend calls backend proxy, which adds API key server-side and forwards to Roboflow.
 
 Both implement the `Connector` interface with `connectWrtc(offer, wrtcParams)` method.
+
+### Error Handling
+
+Both connectors normalize backend errors through a shared helper
+(`throwFromErrorResponse` in `inference-api.ts`). When a response has a non-2xx
+status and a JSON body containing a `message` field (the shape returned by
+`/initialise_webrtc_worker` via `WorkflowErrorResponse.model_dump()`), the SDK
+throws a `WorkflowError` with:
+
+- `statusCode: number` - HTTP status
+- `errorData: WorkflowErrorData` - `{ message, error_type, context,
+  inner_error_type, inner_error_message, blocks_errors }`
+
+Non-JSON responses (proxy 5xx, HTML error pages, etc.) fall back to a plain
+`Error`. `WorkflowError extends Error`, so existing generic `catch` blocks are
+unaffected.
+
+For `withProxyUrl()` to surface `WorkflowError` end-to-end, the backend proxy
+must forward Roboflow's error status and JSON body verbatim (the JSDoc example
+on `connectors.withProxyUrl()` shows the recommended `catch WorkflowError →
+res.status(statusCode).json(errorData)` pattern).
 
 ## Build Configuration
 
