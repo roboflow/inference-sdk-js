@@ -1,9 +1,8 @@
 /**
  * Default base URL for the Roboflow API (used for TURN server configuration)
  */
-const DEFAULT_RF_API_BASE_URL = typeof process !== "undefined" && process.env?.RF_API_BASE_URL
-  ? process.env.RF_API_BASE_URL
-  : "https://api.roboflow.com";
+const _proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+const DEFAULT_RF_API_BASE_URL = _proc?.env?.RF_API_BASE_URL ?? "https://api.roboflow.com";
 
 /**
  * Traceback details for a block that failed during execution
