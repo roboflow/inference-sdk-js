@@ -6,6 +6,87 @@ const DEFAULT_RF_API_BASE_URL = typeof process !== "undefined" && process.env?.R
   : "https://api.roboflow.com";
 
 /**
+ * Traceback details for a block that failed during execution
+ */
+export interface BlockTraceback {
+  traceback?: string;
+  error_line?: number;
+  code_snippet?: string;
+  stdout?: string;
+  stderr?: string;
+}
+
+/**
+ * Structured workflow error data from the backend
+ */
+export interface WorkflowErrorData {
+  message: string;
+  error_type?: string;
+  context?: string;
+  inner_error_type?: string;
+  inner_error_message?: string;
+  blocks_errors?: Array<{
+    block_id?: string;
+    block_type?: string;
+    block_details?: string;
+    property_name?: string;
+    property_details?: string;
+    block_traceback?: BlockTraceback;
+  }>;
+}
+
+/**
+ * Error with structured data from the workflow backend
+ */
+export class WorkflowError extends Error {
+  public readonly errorData: WorkflowErrorData;
+  public readonly statusCode: number;
+
+  constructor(message: string, statusCode: number, errorData: WorkflowErrorData) {
+    super(message);
+    this.name = "WorkflowError";
+    this.statusCode = statusCode;
+    this.errorData = errorData;
+    Object.setPrototypeOf(this, WorkflowError.prototype);
+  }
+}
+
+/**
+ * Attempt to parse a structured WorkflowErrorData payload from a response body.
+ *
+ * The backend returns errors as JSON like `{ message, error_type, ... }`. A backend
+ * proxy that forwards these responses verbatim will produce the same body, so both
+ * the direct-to-Roboflow path and the proxy path can normalize errors here.
+ */
+function tryParseWorkflowErrorData(text: string): WorkflowErrorData | null {
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed.message === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read an error response and throw either a structured `WorkflowError` or a plain
+ * `Error` with the raw body as a fallback. Shared between the direct and proxy
+ * connectors so SDK users see the same error surface regardless of transport.
+ */
+async function throwFromErrorResponse(response: Response, prefix: string): Promise<never> {
+  const errorText = await response.text().catch(() => "");
+  const errorData = tryParseWorkflowErrorData(errorText);
+  if (errorData) {
+    throw new WorkflowError(
+      `${prefix} (${response.status}): ${errorData.message}`,
+      response.status,
+      errorData
+    );
+  }
+  throw new Error(`${prefix} (${response.status}): ${errorText}`);
+}
+
+/**
  * List of known Roboflow serverless API URLs where auto TURN config applies
  */
 const ROBOFLOW_SERVERLESS_URLS = [
@@ -305,8 +386,7 @@ export class InferenceHTTPClient {
     });
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      throw new Error(`initialise_webrtc_worker failed (${response.status}): ${errorText}`);
+      await throwFromErrorResponse(response, "initialise_webrtc_worker failed");
     }
 
     const result = await response.json();
@@ -398,6 +478,7 @@ export class InferenceHTTPClient {
       return null;
     }
   }
+
 }
 
 /**
@@ -517,27 +598,40 @@ export const connectors = {
    *     apiKey: process.env.ROBOFLOW_API_KEY
    *   });
    *
-   *   const answer = await client.initializeWebrtcWorker({
-   *     offer,
-   *     workflowSpec: wrtcParams.workflowSpec,
-   *     workspaceName: wrtcParams.workspaceName,
-   *     workflowId: wrtcParams.workflowId,
-   *     config: {
-   *       imageInputName: wrtcParams.imageInputName,
-   *       streamOutputNames: wrtcParams.streamOutputNames,
-   *       dataOutputNames: wrtcParams.dataOutputNames,
-   *       threadPoolWorkers: wrtcParams.threadPoolWorkers,
-   *       workflowsParameters: wrtcParams.workflowsParameters,
-   *       iceServers: wrtcParams.iceServers,
-   *       processingTimeout: wrtcParams.processingTimeout,
-   *       requestedPlan: wrtcParams.requestedPlan,
-   *       requestedRegion: wrtcParams.requestedRegion
+   *   try {
+   *     const answer = await client.initializeWebrtcWorker({
+   *       offer,
+   *       workflowSpec: wrtcParams.workflowSpec,
+   *       workspaceName: wrtcParams.workspaceName,
+   *       workflowId: wrtcParams.workflowId,
+   *       config: {
+   *         imageInputName: wrtcParams.imageInputName,
+   *         streamOutputNames: wrtcParams.streamOutputNames,
+   *         dataOutputNames: wrtcParams.dataOutputNames,
+   *         threadPoolWorkers: wrtcParams.threadPoolWorkers,
+   *         workflowsParameters: wrtcParams.workflowsParameters,
+   *         iceServers: wrtcParams.iceServers,
+   *         processingTimeout: wrtcParams.processingTimeout,
+   *         requestedPlan: wrtcParams.requestedPlan,
+   *         requestedRegion: wrtcParams.requestedRegion
+   *       }
+   *     });
+   *     res.json(answer);
+   *   } catch (err) {
+   *     // Forward the structured error body/status so the client SDK can
+   *     // surface it as a WorkflowError with full errorData.
+   *     if (err instanceof WorkflowError) {
+   *       res.status(err.statusCode).json(err.errorData);
+   *     } else {
+   *       res.status(500).json({ message: err.message ?? 'Unknown error' });
    *     }
-   *   });
-   *
-   *   res.json(answer);
+   *   }
    * });
    * ```
+   *
+   * The SDK will parse `{ message, error_type, ... }` JSON bodies from the proxy
+   * into a {@link WorkflowError}, matching the behavior of {@link withApiKey}.
+   * Non-JSON / unstructured error responses are surfaced as a plain `Error`.
    */
   withProxyUrl(proxyUrl: string, options: { turnConfigUrl?: string } = {}): Connector {
     const { turnConfigUrl } = options;
@@ -554,8 +648,7 @@ export const connectors = {
         });
 
         if (!response.ok) {
-          const errorText = await response.text().catch(() => "");
-          throw new Error(`Proxy request failed (${response.status}): ${errorText}`);
+          await throwFromErrorResponse(response, "Proxy request failed");
         }
 
         return await response.json();
