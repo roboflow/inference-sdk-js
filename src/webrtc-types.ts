@@ -28,14 +28,96 @@ export interface WebRTCVideoMetadata {
 }
 
 /**
+ * Bounding box prediction from an object detection model.
+ * Coordinates are in image pixel space with x/y at the box center.
+ */
+export interface DetectionPrediction {
+  /** Center x coordinate in pixels */
+  x: number;
+  /** Center y coordinate in pixels */
+  y: number;
+  width: number;
+  height: number;
+  confidence: number;
+  class: string;
+  class_id: number;
+  detection_id: string;
+  parent_id?: string;
+}
+
+/** A single body keypoint from a pose estimation model. */
+export interface Keypoint {
+  x: number;
+  y: number;
+  /** Visibility confidence (0–1). Filter below 0.3 before rendering. */
+  confidence: number;
+  /** Numeric keypoint index — ordering is defined by the model's keypoint schema */
+  class_id: number;
+  /** Keypoint name e.g. "nose", "left_shoulder" */
+  class: string;
+}
+
+/** A detected person with bounding box and body keypoints. */
+export interface KeypointPrediction extends DetectionPrediction {
+  keypoints: Keypoint[];
+}
+
+/** A single class score from a classification model. */
+export interface ClassificationPrediction {
+  class: string;
+  class_id: number;
+  confidence: number;
+}
+
+/**
+ * Shape returned by a `JsonField` output block connected to an object
+ * detection model step.
+ */
+export interface DetectionOutput {
+  image: { width: number; height: number };
+  predictions: DetectionPrediction[];
+}
+
+/**
+ * Shape returned by a `JsonField` output block connected to a keypoint
+ * detection model step.
+ */
+export interface PoseDetectionOutput {
+  image: { width: number; height: number };
+  predictions: KeypointPrediction[];
+}
+
+/**
+ * Shape returned by a `JsonField` output block connected to a
+ * classification model step.
+ */
+export interface ClassificationOutput {
+  image: { width: number; height: number };
+  predictions: ClassificationPrediction[];
+  top: string;
+  confidence: number;
+}
+
+/**
  * Output data from WebRTC inference
  *
  * This is the structure of data received via the `onData` callback
  * for both live streams and video file uploads.
+ *
+ * The optional type parameter `T` narrows `serialized_output_data` to match
+ * your workflow's output shape. Defaults to `Record<string, any>` for
+ * backwards compatibility.
+ *
+ * @example
+ * ```typescript
+ * onData: (data: WebRTCOutputData<{ predictions: PoseDetectionOutput }>) => {
+ *   const people = data.serialized_output_data?.predictions.predictions;
+ * }
+ * ```
  */
-export interface WebRTCOutputData {
-  /** Workflow output data (predictions, counts, etc.) */
-  serialized_output_data?: Record<string, any> | null;
+export interface WebRTCOutputData<T = Record<string, any>> {
+  /** Workflow output data typed to match your workflow's output shape */
+  serialized_output_data?: T | null;
   /** Video frame metadata */
   video_metadata?: WebRTCVideoMetadata | null;
   /** List of error messages from processing */
