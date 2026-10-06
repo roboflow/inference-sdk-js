@@ -16,6 +16,12 @@ export { FileUploader } from "./video-upload";
  */
 const HEADER_SIZE = 12;
 
+// Bound retained wire messages, including an active callback and partial frame.
+// Server ACK pacing only starts after the first positive ACK, so it cannot bound
+// an initial burst while the first callback is still pending.
+const MAX_PENDING_BATCH_BYTES = 64 * 1024 * 1024;
+const MAX_PENDING_BATCH_MESSAGES = 1024;
+
 /**
  * Reassembles chunked binary messages from the datachannel
  */
@@ -90,30 +96,11 @@ export function parseBinaryHeader(buffer: ArrayBuffer): { frameId: number; chunk
  * Decompress gzip-compressed data using browser's DecompressionStream API
  */
 async function decompressGzip(compressed: Uint8Array): Promise<Uint8Array> {
-  const ds = new DecompressionStream('gzip');
-  const writer = ds.writable.getWriter();
-  writer.write(compressed as unknown as BufferSource);
-  writer.close();
-  
-  const reader = ds.readable.getReader();
-  const chunks: Uint8Array[] = [];
-  
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-  }
-  
-  // Concatenate all chunks
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-  
-  return result;
+  // pipeThrough propagates decompression errors without leaving ignored writer
+  // promises rejected when a corrupt gzip payload is received.
+  const stream = new Blob([compressed as unknown as BlobPart]).stream()
+    .pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
 export interface UseStreamOptions {
@@ -354,6 +341,19 @@ export class RFWebRTCConnection {
   public readonly dataChannel: RTCDataChannel;
   private reassembler: ChunkReassembler;
   private ackPacingEnabled: boolean;
+  private pendingDataMessages: Array<{ data: ArrayBuffer | string; bytes: number }> = [];
+  private pendingDataBytes = 0;
+  private pendingDataCount = 0;
+  private processingDataMessages = false;
+  private dataProcessingStopped = false;
+  private dataChannelClosed = false;
+  private batchFrame?: {
+    frameId: number;
+    totalChunks: number;
+    nextChunk: number;
+    bytes: number;
+    messages: number;
+  };
   /**
    * The data channel used for uploading video files (only available in file upload mode).
    * Exposed for advanced use cases.
@@ -397,40 +397,14 @@ export class RFWebRTCConnection {
     // Setup data channel event listeners
     if (onData) {
       this.dataChannel.addEventListener("message", (messageEvent: MessageEvent) => {
-        (async () => {
-          try {
-            // Handle binary protocol with chunking
-            if (messageEvent.data instanceof ArrayBuffer) {
-              const { frameId, chunkIndex, totalChunks, payload } = parseBinaryHeader(messageEvent.data);
-              const completePayload = this.reassembler.processChunk(frameId, chunkIndex, totalChunks, payload);
-
-              if (completePayload) {
-                // Check if payload is gzip compressed (magic bytes: 0x1f 0x8b)
-                let jsonBytes: Uint8Array;
-                if (completePayload[0] === 0x1f && completePayload[1] === 0x8b) {
-                  // Decompress gzip
-                  jsonBytes = await decompressGzip(completePayload);
-                } else {
-                  jsonBytes = completePayload;
-                }
-                
-                // Decode UTF-8 JSON payload
-                const decoder = new TextDecoder("utf-8");
-                const jsonString = decoder.decode(jsonBytes);
-                const data = JSON.parse(jsonString);
-                // Wait for onData completion (supports async handlers) before ACKing the frame.
-                await Promise.resolve(onData(data));
-                this.maybeSendAck(frameId);
-              }
-            } else {
-              // Fallback for string messages (shouldn't happen with new protocol)
-              const data = JSON.parse(messageEvent.data);
-              onData(data);
-            }
-          } catch (err) {
+        if (this.ackPacingEnabled) {
+          this.enqueueBatchMessage(messageEvent.data, onData);
+        } else {
+          // Preserve concurrent delivery for realtime streams.
+          void this.handleDataMessage(messageEvent.data, onData).catch(err => {
             console.error("[RFWebRTC] Failed to parse data channel message:", err);
-          }
-        })();
+          });
+        }
       });
 
       this.dataChannel.addEventListener("error", (error) => {
@@ -438,13 +412,140 @@ export class RFWebRTCConnection {
       });
     }
 
-    // Handle channel close - call onComplete when processing finishes
+    // A remote close can arrive while decompression or an onData callback is
+    // pending. In batch mode, finish already-received messages before onComplete.
     this.dataChannel.addEventListener("close", () => {
-      this.reassembler.clear();
-      if (this.onComplete) {
-        this.onComplete();
+      this.dataChannelClosed = true;
+      if (this.ackPacingEnabled) {
+        this.finishBatchOnClose();
+      } else {
+        this.reassembler.clear();
+        this.onComplete?.();
       }
     });
+  }
+
+  private enqueueBatchMessage(data: ArrayBuffer | string, onData: (data: any) => void): void {
+    if (this.dataProcessingStopped || this.dataChannelClosed) return;
+    // Account for UTF-16 storage for legacy string messages.
+    const bytes = data instanceof ArrayBuffer ? data.byteLength : data.length * 2;
+    if (this.pendingDataCount >= MAX_PENDING_BATCH_MESSAGES ||
+        this.pendingDataBytes + bytes > MAX_PENDING_BATCH_BYTES) {
+      this.failBatch(new Error("Batch data channel buffer limit exceeded"));
+      return;
+    }
+    this.pendingDataBytes += bytes;
+    this.pendingDataCount++;
+    this.pendingDataMessages.push({ data, bytes });
+    void this.drainBatchMessages(onData);
+  }
+
+  private async drainBatchMessages(onData: (data: any) => void): Promise<void> {
+    if (this.processingDataMessages || this.dataProcessingStopped) return;
+    this.processingDataMessages = true;
+    try {
+      while (this.pendingDataMessages.length && !this.dataProcessingStopped) {
+        const message = this.pendingDataMessages.shift()!;
+        const released = await this.handleDataMessage(message.data, onData, message.bytes);
+        if (!this.dataProcessingStopped) {
+          this.pendingDataBytes -= released.bytes;
+          this.pendingDataCount -= released.messages;
+        }
+      }
+    } catch (err) {
+      // Continuing could cumulatively ACK a frame that was never fully handled.
+      this.failBatch(err);
+    } finally {
+      this.processingDataMessages = false;
+      this.finishBatchOnClose();
+    }
+  }
+
+  private async handleDataMessage(
+    message: ArrayBuffer | string,
+    onData: (data: any) => void,
+    bytes = 0
+  ): Promise<{ bytes: number; messages: number }> {
+    let released = { bytes, messages: 1 };
+    if (message instanceof ArrayBuffer) {
+      const { frameId, chunkIndex, totalChunks, payload } = parseBinaryHeader(message);
+      if (this.ackPacingEnabled) {
+        // The ordered server channel sends all chunks of a frame together. An
+        // incomplete earlier frame must never be hidden by a later cumulative ACK.
+        if (!this.batchFrame) {
+          this.batchFrame = { frameId, totalChunks, nextChunk: 0, bytes: 0, messages: 0 };
+        }
+        const frame = this.batchFrame;
+        if (totalChunks === 0 || frame.frameId !== frameId ||
+            frame.totalChunks !== totalChunks || chunkIndex !== frame.nextChunk ||
+            chunkIndex >= totalChunks) {
+          throw new Error("Invalid or incomplete batch data channel frame");
+        }
+        frame.nextChunk++;
+        frame.bytes += bytes;
+        frame.messages++;
+      }
+      const completePayload = this.reassembler.processChunk(frameId, chunkIndex, totalChunks, payload);
+      if (!completePayload) return { bytes: 0, messages: 0 };
+      if (this.batchFrame) {
+        released = { bytes: this.batchFrame.bytes, messages: this.batchFrame.messages };
+        this.batchFrame = undefined;
+      }
+
+      const jsonBytes = completePayload[0] === 0x1f && completePayload[1] === 0x8b
+        ? await decompressGzip(completePayload)
+        : completePayload;
+      if (this.ackPacingEnabled && this.dataProcessingStopped) return released;
+      const data = JSON.parse(new TextDecoder("utf-8").decode(jsonBytes));
+      await Promise.resolve(onData(data));
+      this.maybeSendAck(frameId);
+    } else {
+      if (this.ackPacingEnabled && this.batchFrame) {
+        throw new Error("Incomplete batch frame before string data channel message");
+      }
+      const data = JSON.parse(message);
+      if (this.ackPacingEnabled) {
+        await Promise.resolve(onData(data));
+      } else {
+        onData(data);
+      }
+    }
+    return released;
+  }
+
+  private stopBatchProcessing(): void {
+    this.dataProcessingStopped = true;
+    this.pendingDataMessages = [];
+    this.pendingDataBytes = 0;
+    this.pendingDataCount = 0;
+    this.batchFrame = undefined;
+    this.reassembler.clear();
+  }
+
+  private failBatch(err: unknown): void {
+    if (this.dataProcessingStopped) return;
+    console.error("[RFWebRTC] Batch data processing failed; closing connection:", err);
+    this.stopBatchProcessing();
+    // Closing is observable through the existing connection/channel lifecycle.
+    // Do not report successful completion or ACK later work after a failure.
+    this.dataChannel.close();
+    void this.cleanup().catch(cleanupError => {
+      console.error("[RFWebRTC] Failed to clean up batch connection:", cleanupError);
+    });
+  }
+
+  private finishBatchOnClose(): void {
+    if (!this.dataChannelClosed || this.processingDataMessages || this.dataProcessingStopped) return;
+    if (this.batchFrame) {
+      this.failBatch(new Error("Data channel closed with an incomplete batch frame"));
+      return;
+    }
+    this.stopBatchProcessing();
+    try {
+      this.onComplete?.();
+    } catch (err) {
+      console.error("[RFWebRTC] Completion callback failed:", err);
+    }
   }
 
   /**
@@ -452,7 +553,7 @@ export class RFWebRTCConnection {
    * Only used in batch mode (realtimeProcessing=false).
    */
   private maybeSendAck(frameId: number): void {
-    if (!this.ackPacingEnabled) return;
+    if (!this.ackPacingEnabled || this.dataProcessingStopped) return;
     if (this.dataChannel.readyState !== "open") return;
 
     this.dataChannel.send(JSON.stringify({ ack: frameId }));
@@ -508,6 +609,10 @@ export class RFWebRTCConnection {
    * ```
    */
   async cleanup(): Promise<void> {
+    // Cancel synchronously, before pipeline termination awaits. Never wait for
+    // onData here: a callback may itself await cleanup().
+    if (this.ackPacingEnabled) this.stopBatchProcessing();
+
     // Cancel any ongoing upload
     if (this.uploader) {
       this.uploader.cancel();
