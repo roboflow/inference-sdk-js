@@ -72,6 +72,35 @@ try {
 }
 ```
 
+## Batch data handling
+
+Set `wrtcParams.realtimeProcessing: false` to enable ordered batch delivery and
+cumulative acknowledgements. `useVideoFile` currently defaults to realtime
+processing, so file uploads also need this explicit setting.
+
+In batch mode, received messages are decoded and passed to `onData` in order.
+Return a promise from `onData` when handling a result asynchronously: the SDK
+waits for it before acknowledging that frame or delivering the next result,
+including a `processing_complete` message. When the remote data channel closes,
+already-received messages finish before `onComplete` runs.
+
+Calling `cleanup()` cancels queued batch messages and suppresses `onComplete`.
+An already-running callback cannot be cancelled, but it will not send an ACK
+after cleanup. It is safe to call and await `cleanup()` from inside `onData`.
+
+A malformed message, incomplete chunked frame, rejected/thrown `onData` callback,
+ACK send failure, or receive-buffer overflow stops batch processing, logs an
+error, and closes the connection. Later messages are not acknowledged and
+`onComplete` is not called. Connection and data-channel close events remain
+available for observing termination.
+
+The receive buffer allows at most 1,024 retained messages and 64 MiB of retained
+wire data (or UTF-16 string storage), including active handling and partial
+frames. Both limits apply; they do not bound decompressed data or objects retained
+by the application. The limits protect against a stalled callback before the
+server's ACK pacing starts. Realtime processing remains concurrent and does not
+use these batch limits or acknowledgements.
+
 ## Security Warning
 
 **Never expose your API key in frontend code.** Always use a backend proxy for production applications. The sample app demonstrates the recommended proxy pattern.
