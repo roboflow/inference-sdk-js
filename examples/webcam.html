@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Webcam - Roboflow Inference SDK</title>
+    <link rel="stylesheet" href="./examples.css">
+</head>
+<body>
+    <main>
+        <a href="../index.html">&larr; Examples</a>
+        <h1>Webcam</h1>
+        <p>Publishes this browser's camera to Cloud Streaming, runs a Workflow on it, and shows the
+            annotated video and the per-frame results.</p>
+
+        <label for="apiKey">API key</label>
+        <input id="apiKey" type="password" autocomplete="off" placeholder="Leave empty to use the proxy at /api/streaming">
+        <p class="hint">A key in the page is for demos only. See examples/proxy-server.mjs for production.</p>
+
+        <label for="apiUrl">API</label>
+        <select id="apiUrl">
+            <option value="https://api.roboflow.com">api.roboflow.com</option>
+            <option value="https://api.roboflow.one">api.roboflow.one (staging)</option>
+        </select>
+
+        <label for="workflow">Workflow id</label>
+        <input id="workflow" placeholder="Leave empty for the built-in object detection Workflow">
+
+        <label for="imageOutput">Image output</label>
+        <input id="imageOutput" placeholder="annotated">
+
+        <div class="controls">
+            <button id="start">Start</button>
+            <button id="stop" disabled>Stop</button>
+            <div id="status">Idle</div>
+        </div>
+
+        <video id="video" autoplay playsinline muted></video>
+        <pre id="results"></pre>
+    </main>
+    <script type="module" src="./webcam.ts"></script>
+</body>
+</html>

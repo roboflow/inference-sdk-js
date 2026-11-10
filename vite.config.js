@@ -8,6 +8,10 @@ export default defineConfig({
             "@roboflow/inference-sdk": resolve(__dirname, "src/index.ts")
         }
     },
+    server: {
+        // examples/proxy-server.mjs
+        proxy: { "/api": "http://localhost:8787" }
+    },
     build: {
         sourcemap: true,
         lib: {
