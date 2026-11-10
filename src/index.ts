@@ -18,6 +18,18 @@ export {
   type WatchGrant
 } from "./api";
 export { connectors } from "./connectors";
-export { createStreamingProxy, type StreamingProxyOptions, type StreamingProxyResponse } from "./proxy";
+export {
+  createStreamingProxy,
+  type StreamingProxyOptions,
+  type StreamingProxyResponse
+} from "./proxy";
 export type { ResultGap, StreamResult } from "./results";
+export {
+  attachStream,
+  startStream,
+  type AttachStreamOptions,
+  type CloudStream,
+  type StartStreamOptions,
+  type StreamCallbacks
+} from "./stream";
 export * as streams from "./streams";
