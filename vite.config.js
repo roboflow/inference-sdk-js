@@ -13,7 +13,7 @@ export default defineConfig({
         lib: {
             entry: resolve(__dirname, "src/index.ts"),
             name: "RoboflowClient",
-            fileName: (format) => `index${format === "umd" ? "" : "." + format}.js`,
+            fileName: (format) => (format === "es" ? "index.mjs" : "index.js"),
             formats: ["umd", "es"]
         },
         outDir: "dist",
@@ -21,6 +21,7 @@ export default defineConfig({
     },
     plugins: [dts({
         include: ["src/**/*.ts"],
+        exclude: ["src/**/*.test.ts"],
         outDir: "dist"
     })]
 });
