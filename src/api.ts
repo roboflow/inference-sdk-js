@@ -92,7 +92,7 @@ export interface ResultSubscription {
 }
 
 export interface StreamingResponses {
-  listSources: { sources: VideoSource[]; webcamAvailable: boolean };
+  listSources: { sources: VideoSource[] };
   createSession: TemporarySession;
   startJob: { job: VideoJob };
   getJob: { job: VideoJob };

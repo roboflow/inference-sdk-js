@@ -7,7 +7,8 @@ export interface StreamResult {
   frameId: number;
   /** When the result was published (ISO 8601 UTC), not when the frame was captured. */
   timestamp: string;
-  latencyMs: number;
+  /** Milliseconds from the frame's capture to its result; null when unknown. */
+  latencyMs: number | null;
   /** Top-level image outputs arrive as `{ type: "image_ref", output: "<name>" }`. */
   outputs: Record<string, unknown>;
   executionGeneration?: number;
@@ -27,7 +28,7 @@ type FeedMessage =
       result: {
         frameId: number;
         timestamp: string;
-        latencyMs: number;
+        latencyMs: number | null;
         outputs: Record<string, unknown>;
       };
     }
