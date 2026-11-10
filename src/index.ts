@@ -19,4 +19,5 @@ export {
 } from "./api";
 export { connectors } from "./connectors";
 export { createStreamingProxy, type StreamingProxyOptions, type StreamingProxyResponse } from "./proxy";
+export type { ResultGap, StreamResult } from "./results";
 export * as streams from "./streams";
