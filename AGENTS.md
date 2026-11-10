@@ -1,174 +1,69 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for coding agents working in this repository.
 
-## Project Overview
+## Project
 
-This is `@roboflow/inference-sdk`, a lightweight TypeScript client library for Roboflow's hosted inference API with WebRTC streaming support. It provides real-time computer vision inference capabilities without bundling TensorFlow or local models, making it ideal for production web applications.
+`@roboflow/inference-sdk` runs Roboflow Workflows on live video from the browser through Roboflow
+Cloud Streaming. The contract it follows is the Cloud Streaming v1 API (temporary sources, jobs,
+`hold-preview`, `watch`, `results/subscribe` and the processor's WebSocket results feed) on
+`https://api.roboflow.com` (staging `https://api.roboflow.one`).
 
-## Development Commands
+## Commands
 
 ```bash
-# Start development server with hot reload
-npm run dev
-
-# Build the library (creates dist/ with UMD and ES modules)
-npm run build
-
-# Preview the production build
-npm run preview
-
-# Clean build artifacts
-npm run clean
+npm run dev        # Vite dev server for index.html and examples/
+npm test           # vitest, runs in Node
+npm run typecheck  # tsc over src/ and examples/
+npm run build      # typecheck, then dist/index.js (UMD), dist/index.mjs and .d.ts files
 ```
 
-## Architecture
+## Layout
 
-### Module Structure
+- `src/api.ts`: the operations (`StreamingRequest`), their responses, the `Connector` interface,
+  `StreamingApi` (the v1 REST client, one method per operation) and `StreamingApiError`.
+- `src/connectors.ts`: `withApiKey` (a `StreamingApi` in the browser, demos only) and
+  `withProxyUrl` (POSTs each request as JSON to the caller's backend).
+- `src/proxy.ts`: `createStreamingProxy`, the server side of `withProxyUrl`. It validates each
+  request strictly, runs `authorize`, and strips the processor token and RTSPS URL from watch
+  grants.
+- `src/results.ts`: `followResults`, the results-feed loop.
+- `src/webrtc.ts`: WHIP publishing and WHEP playback, nothing else.
+- `src/stream.ts`: `startStream`, `attachStream` and the `CloudStream` lifecycle.
+- `src/streams.ts`: camera helpers.
+- `src/index.ts`: everything is exported from the package root.
 
-The library uses a modular export pattern with three main modules:
+## Rules that matter
 
-1. **`inference-api.ts`** - Core HTTP client and connector abstractions
-   - `InferenceHTTPClient` - Handles API communication with Roboflow serverless backend
-   - `connectors.withApiKey()` - Direct API key connector (for demos/testing only)
-   - `connectors.withProxyUrl()` - Proxy-based connector (recommended for production)
-   - `WorkflowError` / `WorkflowErrorData` - Structured error class thrown by both
-     connectors and `InferenceHTTPClient.initializeWebrtcWorker()` when the
-     backend returns a structured failure (see Error Handling below)
-   - Exports all types: `WebRTCParams`, `Connector`, `WorkflowSpec`, etc.
+- **Results loop** (`results.ts`): subscribe; `ended` follows `successorJobId` (fresh cursor) or
+  ends the stream; `retryAfterSeconds` waits; a feed connects to `eventsUrl` with
+  `access_token=<accessToken>` and `after=<last seq>`, resetting the cursor when the execution
+  generation changes. Subscribe again after every `end`, close or refused upgrade, at least 1 s
+  apart, backing off refusals to 30 s. Subscribe errors: network, 408, 429 and 5xx retry after
+  2 s; anything else fails the stream.
+- **Ownership** (`stream.ts`): `startStream` owns its job and, for a `MediaStream`, its temporary
+  session. `stop()` cancels the owned job, stops the owned session and is idempotent. An attached
+  stream never cancels. `pagehide` stops owned previews with `keepalive`; deployments keep running.
+  A failure cancels an owned preview but never a deployment. A failed cancel is sent again by the
+  next `stop()`. Cleanup runs before `onEnd`/`onError`, so a throwing callback leaves nothing
+  behind.
+- **Leases**: temporary previews `hold-preview` every 30 s from creation (`held: false` ends the
+  loop for that job); previews on registered sources and any played video renew `watch` every
+  30 s while the job runs. Leases move to a successor job. A lease a preview lives on that is
+  refused for good fails the stream; a refused video output only rejects `remoteStream`.
+- **Requests** time out after 15 s, so a hung call never stalls a renewal.
+- **WebRTC**: no ICE servers (the relay answers with ICE-TCP host candidates), ICE gathering
+  capped at 1 s, H.264 preferred, one WHIP POST per grant with `redirect: "error"` and a
+  same-origin `Location` that is DELETEd on close. A lost publisher fails the stream; the SDK never
+  allocates a replacement session behind the caller's back. WHEP reconnects on failure, mute or
+  stalled packets and swaps the new track into the same `MediaStream`.
+- **Secrets**: never log or put in an error message `whipUrl`, `whepUrl`, `rtspsUrl`,
+  `accessToken` or `processorAccessToken`.
+- **Idempotency**: one `crypto.randomUUID()` per logical start, reused only to retry that request.
 
-2. **`webrtc.ts`** - WebRTC streaming implementation
-   - `useStream()` - Main function to establish WebRTC connections for real-time inference
-   - `RFWebRTCConnection` - Connection object with methods:
-     - `remoteStream()` - Get processed video from Roboflow
-     - `localStream()` - Get original camera stream
-     - `cleanup()` - Terminate pipeline and close connection
-     - `reconfigureOutputs()` - Dynamically change outputs at runtime
+## Tests
 
-3. **`streams.ts`** - Camera utilities
-   - `useCamera()` - Access device camera with fallback handling
-   - `stopStream()` - Stop media streams and release camera
-
-### Entry Point Pattern
-
-`index.ts` re-exports everything from `inference-api` at the root level, while exporting `webrtc` and `streams` as namespace objects. This allows for flexible import patterns:
-
-```typescript
-// Import connectors and types from root
-import { connectors, InferenceHTTPClient } from '@roboflow/inference-sdk';
-
-// Import from namespaced modules
-import { useStream } from '@roboflow/inference-sdk/webrtc';
-import { useCamera } from '@roboflow/inference-sdk/streams';
-```
-
-### WebRTC Connection Flow
-
-The WebRTC connection establishment follows this sequence:
-
-1. **Peer Connection Setup** (`preparePeerConnection`):
-   - Creates RTCPeerConnection with STUN server
-   - Adds transceiver for receiving remote video (MUST be before local tracks)
-   - Adds local camera tracks with `contentHint: "detail"` optimization
-   - Creates bidirectional data channel for control messages
-   - Waits for ICE gathering with srflx candidate validation
-
-2. **SDP Exchange**:
-   - Creates local offer and sets it as local description
-   - Calls `connector.connectWrtc()` to exchange offer/answer with Roboflow
-   - Sets remote description from server answer
-   - Waits for connection state to become "connected" (30s timeout)
-
-3. **Quality Optimization**:
-   - By default, disables input stream downscaling via `setParameters({ scaleResolutionDownBy: 1 })`
-   - Can be disabled via `options.disableInputStreamDownscaling = false`
-
-4. **Pipeline Management**:
-   - Server returns `pipeline_id` in answer context
-   - Stored for cleanup via `/inference_pipelines/{id}/terminate` endpoint
-
-### Connector Pattern
-
-The connector abstraction allows flexible authentication methods:
-
-- **`withApiKey()`** - Directly embeds API key in requests. Displays security warning in browser context. Use only for demos.
-- **`withProxyUrl()`** - Production-safe pattern where frontend calls backend proxy, which adds API key server-side and forwards to Roboflow.
-
-Both implement the `Connector` interface with `connectWrtc(offer, wrtcParams)` method.
-
-### Error Handling
-
-Both connectors normalize backend errors through a shared helper
-(`throwFromErrorResponse` in `inference-api.ts`). When a response has a non-2xx
-status and a JSON body containing a `message` field (the shape returned by
-`/initialise_webrtc_worker` via `WorkflowErrorResponse.model_dump()`), the SDK
-throws a `WorkflowError` with:
-
-- `statusCode: number` - HTTP status
-- `errorData: WorkflowErrorData` - `{ message, error_type, context,
-  inner_error_type, inner_error_message, blocks_errors }`
-
-Non-JSON responses (proxy 5xx, HTML error pages, etc.) fall back to a plain
-`Error`. `WorkflowError extends Error`, so existing generic `catch` blocks are
-unaffected.
-
-For `withProxyUrl()` to surface `WorkflowError` end-to-end, the backend proxy
-must forward Roboflow's error status and JSON body verbatim (the JSDoc example
-on `connectors.withProxyUrl()` shows the recommended `catch WorkflowError →
-res.status(statusCode).json(errorData)` pattern).
-
-## Build Configuration
-
-Uses Vite with the following setup:
-- **Entry**: `src/index.ts`
-- **Output formats**: UMD (browser global) and ES modules
-- **TypeScript**: Strict mode enabled with declaration generation via `vite-plugin-dts`
-- **Target**: ES2020 with DOM APIs
-- **Output**: `dist/` directory with:
-  - `index.js` (UMD)
-  - `index.es.js` (ESM)
-  - `index.d.ts` (TypeScript declarations)
-
-## Critical Implementation Details
-
-### WebRTC Transceiver Ordering
-
-**IMPORTANT**: The transceiver for receiving remote video MUST be added BEFORE local tracks. This is required for proper bidirectional video flow:
-
-```typescript
-// Correct order in preparePeerConnection:
-pc.addTransceiver("video", { direction: "recvonly" }); // First
-localStream.getVideoTracks().forEach(track => pc.addTrack(track, localStream)); // Second
-```
-
-### ICE Gathering Validation
-
-The `waitForIceGathering()` function validates that at least one srflx (server reflexive) candidate is gathered before proceeding. This ensures the connection can traverse NAT. If timeout occurs without srflx, an error is thrown.
-
-### Data Channel Protocol
-
-The `roboflow-control` data channel supports bidirectional JSON messages:
-- **Outbound**: `reconfigureOutputs()` sends `{ stream_output, data_output }` to dynamically change outputs
-- **Inbound**: Received in `onData` callback, typically containing inference results
-
-### Workflow Configuration
-
-The API supports two mutually exclusive ways to specify workflows:
-1. Inline `workflowSpec` object (full workflow definition)
-2. Reference via `workspaceName` + `workflowId`
-
-The `initializeWebrtcWorker()` method validates that exactly one is provided.
-
-## Security Considerations
-
-- **Never use `connectors.withApiKey()` in production frontend code** - it exposes the API key in browser
-- Always implement backend proxy for production deployments
-- The library displays console warning when `withApiKey()` is detected in browser context
-- API keys should be stored in environment variables server-side (e.g., `process.env.ROBOFLOW_API_KEY`)
-
-## TypeScript Configuration
-
-- **Strict mode enabled**: All strict type checks are enforced
-- **No unused locals/parameters**: Enforced at compile time
-- **Module resolution**: Uses bundler mode for optimal tree-shaking
-- **Isolated modules**: Each file can be transpiled independently
+Tests cover decisions, not plumbing: the results loop (`results.test.ts`, with an injected
+WebSocket and fake timers), proxy validation and stripping (`proxy.test.ts`), error parsing and
+retry classification (`api.test.ts`), and stream ownership (`stream.test.ts`). Stub `fetch` or pass
+a fake `Connector`; WebRTC itself is verified in a real browser with the examples.

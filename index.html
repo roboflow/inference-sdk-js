@@ -3,163 +3,29 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Roboflow Inference SDK - Examples</title>
-    <style>
-        :root { color-scheme: light dark; }
-        body {
-            margin: 0;
-            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 40px 20px;
-        }
-        .header {
-            text-align: center;
-            color: white;
-            margin-bottom: 40px;
-        }
-        .header h1 {
-            font-size: 36px;
-            margin: 0 0 12px 0;
-            font-weight: 700;
-        }
-        .header p {
-            font-size: 18px;
-            opacity: 0.9;
-            margin: 0;
-        }
-        .examples-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 24px;
-        }
-        .example-card {
-            background: white;
-            border-radius: 16px;
-            padding: 28px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            text-decoration: none;
-            color: inherit;
-            display: block;
-        }
-        .example-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        }
-        .example-icon {
-            width: 56px;
-            height: 56px;
-            background: linear-gradient(135deg, #4f46e5, #7c3aed);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 16px;
-            font-size: 28px;
-        }
-        .example-card h2 {
-            font-size: 20px;
-            margin: 0 0 8px 0;
-            color: #1f2937;
-        }
-        .example-card p {
-            font-size: 14px;
-            color: #6b7280;
-            margin: 0 0 16px 0;
-            line-height: 1.5;
-        }
-        .example-tag {
-            display: inline-block;
-            padding: 4px 10px;
-            background: rgba(79, 70, 229, 0.1);
-            color: #4f46e5;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 40px;
-            color: white;
-            opacity: 0.8;
-            font-size: 14px;
-        }
-        .footer a {
-            color: white;
-            text-decoration: underline;
-        }
-        code {
-            background: rgba(0, 0, 0, 0.1);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: ui-monospace, Monaco, Consolas, monospace;
-            font-size: 13px;
-        }
-    </style>
+    <title>Roboflow Inference SDK Examples</title>
+    <link rel="stylesheet" href="./examples/examples.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Roboflow Inference SDK</h1>
-            <p>WebRTC streaming and video processing examples</p>
-        </div>
-
-        <div class="examples-grid">
-            <a href="examples/webcam.html" class="example-card">
-                <div class="example-icon">&#127909;</div>
-                <h2>Webcam Streaming</h2>
-                <p>
-                    Real-time object detection using your webcam.
-                    Video is streamed via WebRTC and processed on Roboflow's servers.
-                </p>
-                <span class="example-tag">webrtc.useStream()</span>
-            </a>
-
-            <a href="examples/webcam-advanced.html" class="example-card">
-                <div class="example-icon">&#9881;</div>
-                <h2>Advanced Webcam</h2>
-                <p>
-                    Demonstrates lifecycle hooks, connection stats, content hints,
-                    and codec preferences for fine-tuned WebRTC control.
-                </p>
-                <span class="example-tag">hooks &bull; peerConnection</span>
-            </a>
-
-            <a href="examples/file-upload.html" class="example-card">
-                <div class="example-icon">&#128193;</div>
-                <h2>Video File Upload</h2>
-                <p>
-                    Upload a video file for batch processing.
-                    Results are streamed back as each frame is processed.
-                </p>
-                <span class="example-tag">webrtc.useVideoFile()</span>
-            </a>
-
-            <a href="examples/rtsp.html" class="example-card">
-                <div class="example-icon">&#128247;</div>
-                <h2>RTSP Stream</h2>
-                <p>
-                    Connect to an RTSP camera stream for real-time inference.
-                    Server captures the stream directly - no video sent from browser.
-                </p>
-                <span class="example-tag">webrtc.useRtspStream()</span>
-            </a>
-        </div>
-
-        <div class="footer">
-            <p>
-                <code>npm install @roboflow/inference-sdk</code>
-            </p>
-            <p>
-                <a href="https://github.com/roboflow/inference-sdk-js">GitHub</a> &bull;
-                <a href="https://docs.roboflow.com">Documentation</a>
-            </p>
-        </div>
-    </div>
+    <main>
+        <h1>Roboflow Inference SDK</h1>
+        <p>Run Workflows on live video with Roboflow Cloud Streaming.</p>
+        <ul>
+            <li>
+                <a href="examples/webcam.html">Webcam</a>: publish this browser's camera with
+                <code>startStream({ source: mediaStream })</code> and play the annotated video.
+            </li>
+            <li>
+                <a href="examples/existing-source.html">Registered source</a>: run a Workflow on a
+                camera registered in your workspace, or attach to a running job with
+                <code>attachStream</code>.
+            </li>
+        </ul>
+        <p>Both pages take an API key for quick tests. Leave it empty to go through
+            <code>examples/proxy-server.mjs</code> (<code>npm run build</code>, then
+            <code>ROBOFLOW_API_KEY=... node examples/proxy-server.mjs</code>), the pattern to use
+            in production.</p>
+        <p><a href="https://github.com/roboflow/inference-sdk-js">GitHub</a></p>
+    </main>
 </body>
 </html>

@@ -1,18 +1,35 @@
-/**
- * Roboflow Inference Client
- *
- * Lightweight client library for Roboflow's hosted inference API.
- * Provides WebRTC streaming, HTTP client, and camera utilities.
- */
-
-// Re-export everything from inference-api (main entry point)
-export * from './inference-api';
-
-// Re-export WebRTC types for convenience
-export type { WebRTCOutputData, WebRTCHooks } from './webrtc-types';
-
-// Export webrtc and streams as namespace objects
-import * as webrtc from './webrtc';
-import * as streams from './streams';
-
-export { webrtc, streams };
+export {
+  StreamingApi,
+  StreamingApiError,
+  type Connector,
+  type JobRequest,
+  type JobState,
+  type ProcessorSize,
+  type RequestOptions,
+  type ResultSubscription,
+  type StreamingApiOptions,
+  type StreamingOperation,
+  type StreamingRequest,
+  type StreamingResponse,
+  type StreamingResponses,
+  type TemporarySession,
+  type VideoJob,
+  type VideoSource,
+  type WatchGrant
+} from "./api";
+export { connectors } from "./connectors";
+export {
+  createStreamingProxy,
+  type StreamingProxyOptions,
+  type StreamingProxyResponse
+} from "./proxy";
+export type { ResultGap, StreamResult } from "./results";
+export {
+  attachStream,
+  startStream,
+  type AttachStreamOptions,
+  type CloudStream,
+  type StartStreamOptions,
+  type StreamCallbacks
+} from "./stream";
+export * as streams from "./streams";

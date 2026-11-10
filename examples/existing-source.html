@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Registered Source - Roboflow Inference SDK</title>
+    <link rel="stylesheet" href="./examples.css">
+</head>
+<body>
+    <main>
+        <a href="../index.html">&larr; Examples</a>
+        <h1>Registered source</h1>
+        <p>Runs a saved Workflow on a camera already registered in your workspace (a Connector
+            camera, an RTSP camera, an RTMP source...), or attaches to a job that already runs.</p>
+
+        <label for="apiKey">API key</label>
+        <input id="apiKey" type="password" autocomplete="off" placeholder="Leave empty to use the proxy at /api/streaming">
+        <p class="hint">A key in the page is for demos only. See examples/proxy-server.mjs for production.</p>
+
+        <label for="apiUrl">API</label>
+        <select id="apiUrl">
+            <option value="https://api.roboflow.com">api.roboflow.com</option>
+            <option value="https://api.roboflow.one">api.roboflow.one (staging)</option>
+        </select>
+
+        <label for="source">Source id</label>
+        <input id="source" list="sources">
+        <datalist id="sources"></datalist>
+        <div class="controls">
+            <button id="listSources">List Sources</button>
+        </div>
+
+        <label for="workflow">Workflow id</label>
+        <input id="workflow">
+
+        <label for="purpose">Purpose</label>
+        <select id="purpose">
+            <option value="preview">Preview: ends when this page stops or closes (one hour at most)</option>
+            <option value="deployment">Deployment: keeps running and billing until stopped</option>
+        </select>
+
+        <div class="controls">
+            <button id="start">Start</button>
+        </div>
+
+        <label for="job">Job id</label>
+        <input id="job">
+        <div class="controls">
+            <button id="attach">Attach</button>
+        </div>
+
+        <div class="controls">
+            <button id="stop" disabled>Stop</button>
+            <div id="status">Idle</div>
+        </div>
+        <p class="hint">Stop cancels a job this page started; an attached job keeps running.</p>
+
+        <video id="video" autoplay playsinline muted></video>
+        <pre id="results"></pre>
+    </main>
+    <script type="module" src="./existing-source.ts"></script>
+</body>
+</html>

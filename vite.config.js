@@ -8,12 +8,16 @@ export default defineConfig({
             "@roboflow/inference-sdk": resolve(__dirname, "src/index.ts")
         }
     },
+    server: {
+        // examples/proxy-server.mjs
+        proxy: { "/api": "http://localhost:8787" }
+    },
     build: {
         sourcemap: true,
         lib: {
             entry: resolve(__dirname, "src/index.ts"),
             name: "RoboflowClient",
-            fileName: (format) => `index${format === "umd" ? "" : "." + format}.js`,
+            fileName: (format) => (format === "es" ? "index.mjs" : "index.js"),
             formats: ["umd", "es"]
         },
         outDir: "dist",
@@ -21,6 +25,7 @@ export default defineConfig({
     },
     plugins: [dts({
         include: ["src/**/*.ts"],
+        exclude: ["src/**/*.test.ts"],
         outDir: "dist"
     })]
 });
